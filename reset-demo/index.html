@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>重置 GEO 演示流程</title>
+    <style>
+      body { display:grid; min-height:100vh; place-items:center; margin:0; background:#f7f8fb; color:#1b2434; font:16px/1.6 system-ui,sans-serif; }
+      main { max-width:460px; padding:32px; border:1px solid #e1e5ee; border-radius:16px; background:white; box-shadow:0 12px 40px #20304a0d; }
+      h1 { margin:0 0 8px; font-size:22px; }
+      p { margin:0; color:#627089; }
+      a { color:#4058f5; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="title">正在重置演示流程…</h1>
+      <p id="message">正在恢复品牌知识、策略、任务、市场及运营复盘的初始演示数据。</p>
+    </main>
+    <script>
+      (() => {
+        const exactKeys = new Set([
+          'geo-agent-web-mock:v1',
+          'geo-market-context:v1',
+          'geo-operations-review-demo-v1',
+          'geo-operations-review-events-v1',
+        ])
+        const isDemoKey = key => exactKeys.has(key) || key.startsWith('geo-workbench:')
+        const title = document.getElementById('title')
+        const message = document.getElementById('message')
+        try {
+          const keys = Object.keys(localStorage).filter(isDemoKey)
+          keys.forEach(key => localStorage.removeItem(key))
+          if (Object.keys(localStorage).some(isDemoKey))
+            throw new Error('演示数据未能全部清除')
+          title.textContent = '演示流程已重置'
+          message.textContent = '正在进入初始的品牌知识确认步骤。其他已打开的演示标签页请刷新。'
+          setTimeout(() => location.replace(new URL('../onboarding/?reset=all', location.href)), 700)
+        }
+        catch {
+          title.textContent = '重置未完成'
+          message.textContent = '浏览器未允许清除演示数据。请检查站点存储权限后重试。'
+        }
+      })()
+    </script>
+  </body>
+</html>
