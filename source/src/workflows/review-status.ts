@@ -1,7 +1,7 @@
 import type { GeoTask, ServiceMode, Strategy } from '../data/geo-data'
 
 export function pendingReviewLabel(mode: ServiceMode) {
-  const reviewer = mode === 'agent' ? '客户' : '运营'
+  const reviewer = mode === 'agent' ? '客户' : '专家'
   return `待${reviewer}审核`
 }
 
@@ -13,3 +13,4 @@ export function strategyReviewStatus(strategy: Strategy, tasks: GeoTask[], mode:
   if (mode === 'managed' && strategy.reviewStage === 'customer') return '待客户审核'
   return pendingReviewLabel(mode)
 }
+

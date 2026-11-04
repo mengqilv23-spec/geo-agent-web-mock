@@ -260,14 +260,14 @@ export function validateAction(task: GeoTask, role: UserRole, mode: ServiceMode,
   if (action === 'update_web_supplement')
     return (reviewing || preparingContent) && typeof payload.webSupplement === 'boolean' ? null : '当前角色或阶段不能调整联网补充设置'
   if (action === 'confirm_brief')
-    return !briefEditable ? (mode === 'managed' ? '仅运营可确认待确认的 Brief' : '仅客户可确认待确认的 Brief') : briefGate(task).join('；') || null
+    return !briefEditable ? (mode === 'managed' ? '仅专家可确认待确认的 Brief' : '仅客户可确认待确认的 Brief') : briefGate(task).join('；') || null
   if (action === 'ignore_brief') {
     if (role !== (mode === 'managed' ? 'ops' : 'client'))
-      return mode === 'managed' ? '仅运营可忽略待确认的 Brief' : '仅客户可忽略待确认的 Brief'
+      return mode === 'managed' ? '仅专家可忽略待确认的 Brief' : '仅客户可忽略待确认的 Brief'
     if (flow.ignoredBrief)
       return '本次审核事项已忽略'
     if (!briefEditable)
-      return '仅运营可忽略待确认的 Brief'
+      return '仅专家可忽略待确认的 Brief'
     return !payload.ignoreReason?.trim() ? '请选择忽略原因' : !payload.note?.trim() ? '请填写忽略说明' : null
   }
   if (action === 'ignore_task') {
@@ -276,21 +276,21 @@ export function validateAction(task: GeoTask, role: UserRole, mode: ServiceMode,
     if (stage === 'done')
       return '任务已完成，不能再忽略'
     if (ignoreOwner(task, mode) !== role)
-      return `仅当前步骤负责人（${ignoreOwner(task, mode) === 'ops' ? '运营' : '客户'}）可忽略当前步骤`
+      return `仅当前步骤负责人（${ignoreOwner(task, mode) === 'ops' ? '专家' : '客户'}）可忽略当前步骤`
     return !payload.ignoreReason?.trim() ? '请选择忽略原因' : !payload.note?.trim() ? '请填写忽略说明' : null
   }
   if (action === 'request_brief_changes')
-    return role !== 'client' || !briefEditable ? '当前阶段仅运营可维护 Brief' : payload.note?.trim() ? null : '请填写调整意见'
+    return role !== 'client' || !briefEditable ? '当前阶段仅专家可维护 Brief' : payload.note?.trim() ? null : '请填写调整意见'
   if (action === 'rework_brief')
-    return mode === 'managed' && role === 'ops' && stage === 'brief' && flow.briefStatus === 'changes_requested' ? null : '等待运营审核调整意见'
+    return mode === 'managed' && role === 'ops' && stage === 'brief' && flow.briefStatus === 'changes_requested' ? null : '等待专家审核调整意见'
   if (action === 'save_output')
     return !reviewing ? '仅当前审核负责人可编辑产物' : payload.title?.trim() && payload.body?.trim() ? null : '产物标题和正文不能为空'
   if (action === 'request_output_changes')
     return !reviewing ? '当前角色不能要求修改产物' : payload.note?.trim() ? null : '请填写产物修改意见'
   if (action === 'approve_ops')
-    return reviewing && role === 'ops' && stage === 'human' && mode === 'managed' ? null : '仅运营可完成当前阶段的专业审核'
+    return reviewing && role === 'ops' && stage === 'human' && mode === 'managed' ? null : '仅专家可完成当前阶段的专业审核'
   if (action === 'approve_client')
-    return reviewing && role === 'client' && flow.output.body.trim() ? null : '请由客户审核完整产物，必要时先完成运营审核'
+    return reviewing && role === 'client' && flow.output.body.trim() ? null : '请由客户审核完整产物，必要时先完成专家审核'
   if (action === 'submit_site')
     return siteOwner && (stage === 'site_submit' || (mode === 'agent' && task.type === 'repair' && stage === 'human')) && task.type !== 'external' ? null : '仅负责人可提交待提交的官网执行包'
   if (action === 'retry_site')
@@ -309,7 +309,7 @@ export function applyAction(task: GeoTask, role: UserRole, mode: ServiceMode, ac
   if (error)
     return error
   const flow = ensureWorkflow(task)
-  const actor = role === 'ops' ? '运营' : '客户'
+  const actor = role === 'ops' ? '专家' : '客户'
   const note = payload.note?.trim() || ''
   switch (action) {
     case 'save_brief':
@@ -377,7 +377,7 @@ export function applyAction(task: GeoTask, role: UserRole, mode: ServiceMode, ac
       task.progress = 'done'
       break
   }
-  const labels: Record<WorkflowAction, string> = { save_brief: '保存 Brief 新版本', update_web_supplement: `联网补充已${payload.webSupplement ? '开启' : '关闭'}`, confirm_brief: '确认 Brief，进入本地模拟执行', ignore_brief: '忽略本次审核事项', ignore_task: '忽略本次审核事项', request_brief_changes: '提出 Brief 调整意见', rework_brief: '运营审核意见，交 Agent 重整 Brief', save_output: '保存产物修改', request_output_changes: '要求 Agent 修改产物', approve_ops: '修复专业审核通过，等待客户确认', approve_client: mode === 'agent' && task.type !== 'external' ? '客户确认内容，AI 自动提交官网执行包（本地模拟）' : task.type === 'external' ? '外部内容确认，完成交付；不跟踪外部发布 URL' : task.type === 'web' && task.progress === 'done' ? '客户终审通过，建站接口模拟成功，任务已完成' : '客户终审通过，生成官网执行包', submit_site: '提交 AI 建站执行包（本地模拟）', retry_site: '补充要求并重新提交（本地模拟）', publish: '客户确认发布上线，开始官网 Re-check（演示流程）', complete_recheck: '监测 Agent 完成本次官网核验，任务闭环' }
+  const labels: Record<WorkflowAction, string> = { save_brief: '保存 Brief 新版本', update_web_supplement: `联网补充已${payload.webSupplement ? '开启' : '关闭'}`, confirm_brief: '确认 Brief，进入本地模拟执行', ignore_brief: '忽略本次审核事项', ignore_task: '忽略本次审核事项', request_brief_changes: '提出 Brief 调整意见', rework_brief: '专家审核意见，交 Agent 重整 Brief', save_output: '保存产物修改', request_output_changes: '要求 Agent 修改产物', approve_ops: '修复专业审核通过，等待客户确认', approve_client: mode === 'agent' && task.type !== 'external' ? '客户确认内容，AI 自动提交官网执行包（本地模拟）' : task.type === 'external' ? '外部内容确认，完成交付；不跟踪外部发布 URL' : task.type === 'web' && task.progress === 'done' ? '客户终审通过，建站接口模拟成功，任务已完成' : '客户终审通过，生成官网执行包', submit_site: '提交 AI 建站执行包（本地模拟）', retry_site: '补充要求并重新提交（本地模拟）', publish: '客户确认发布上线，开始官网 Re-check（演示流程）', complete_recheck: '监测 Agent 完成本次官网核验，任务闭环' }
   record(task, actor, `${labels[action]}${action === 'ignore_brief' || action === 'ignore_task' ? `：${payload.ignoreReason!.trim()}；${note}` : note ? `：${note}` : ''}`)
   return null
 }
@@ -457,7 +457,7 @@ export function taskStageLabel(task: GeoTask, mode: ServiceMode = 'managed'): st
     return '已忽略'
   if (task.progress === 'brief')
     return task.workflow?.briefStatus === 'agent_reworking' ? 'Agent 重整 Brief' : task.workflow?.briefStatus === 'changes_requested' ? 'Brief 待调整' : 'Brief 待确认'
-  const labels: Record<Exclude<TaskProgress, 'brief'>, string> = { todo: '等待 Agent 执行', running: 'Agent 生成与自动质检', client_content_review: '客户确认文案', human: task.type === 'repair' ? '修复结果确认' : '运营专业审核', client_review: '客户终审', publish: '发布确认', site_submit: '待提交 AI 建站', site_submitted: 'AI 建站审核中', site_running: task.type === 'repair' ? '等待官网处理结果' : 'AI 建站执行中', site_returned: '官网已返回处理结果', site_verifying: 'GEO 验证中', site_publish: '发布门禁确认', site_failed: 'GEO 验证未通过', recheck: 'Re-check 中', done: '任务已完成' }
+  const labels: Record<Exclude<TaskProgress, 'brief'>, string> = { todo: '等待 Agent 执行', running: 'Agent 生成与自动质检', client_content_review: '客户确认文案', human: task.type === 'repair' ? '修复结果确认' : '专家专业审核', client_review: '客户终审', publish: '发布确认', site_submit: '待提交 AI 建站', site_submitted: 'AI 建站审核中', site_running: task.type === 'repair' ? '等待官网处理结果' : 'AI 建站执行中', site_returned: '官网已返回处理结果', site_verifying: 'GEO 验证中', site_publish: '发布门禁确认', site_failed: 'GEO 验证未通过', recheck: 'Re-check 中', done: '任务已完成' }
   return mode === 'agent' && ['human', 'client_content_review', 'client_review'].includes(task.progress) ? (task.type === 'repair' ? '待客户确认修复' : '待客户审核') : labels[task.progress]
 }
 export function collaborationLabel(task: GeoTask, mode: ServiceMode = 'managed'): string {
@@ -472,6 +472,7 @@ export function collaborationLabel(task: GeoTask, mode: ServiceMode = 'managed')
   if (task.progress === 'site_failed')
     return '验证未通过'
   if (mode === 'managed' && ((task.progress === 'brief' && task.workflow?.briefStatus === 'changes_requested') || (task.progress === 'human' && task.type === 'repair') || task.progress === 'site_submit'))
-    return '运营审核'
+    return '专家审核'
   return '待用户审核'
 }
+

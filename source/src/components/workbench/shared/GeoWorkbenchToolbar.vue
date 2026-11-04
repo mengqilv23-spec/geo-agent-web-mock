@@ -31,7 +31,7 @@ function openPage(page: ProcessingPage) {
       <label v-if="activePage === 'diagnosis' || activePage === 'optimization'" class="geo-workbench-toolbar__role">
         <span>产品版本</span>
         <select aria-label="产品版本" :value="serviceMode || 'managed'" @change="emit('update:serviceMode', ($event.target as HTMLSelectElement).value as ServiceMode)">
-          <option value="managed">AI + 运营 + 客户</option>
+          <option value="managed">AI + 专家 + 客户</option>
           <option value="agent">AI + 客户</option>
         </select>
       </label>
@@ -39,7 +39,7 @@ function openPage(page: ProcessingPage) {
         <span>本地角色</span>
         <div class="geo-role-switch" role="group" aria-label="切换体验角色">
           <button type="button" :aria-pressed="role === 'ops'" :class="{ 'is-active': role === 'ops' }" @click="emit('update:role', 'ops')">
-            运营
+            专家
           </button>
           <button type="button" :aria-pressed="role === 'client'" :class="{ 'is-active': role === 'client' }" @click="emit('update:role', 'client')">
             客户
@@ -87,3 +87,4 @@ select { padding: 6px 10px; border: 1px solid var(--border-default); border-radi
 .geo-workbench-toolbar__processing-list button:disabled { cursor: default; }
 .geo-workbench-toolbar__processing-list small { color: var(--text-secondary); white-space: nowrap; }
 </style>
+

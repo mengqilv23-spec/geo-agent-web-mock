@@ -235,22 +235,22 @@ const waitingFor = computed(() => {
   if (props.task.progress === 'done')
     return props.task.type === 'external' ? '外部成稿已完成交付，不跟踪外部发布 URL。' : '任务已形成闭环，可从来源策略查看效果回流。'
   if (props.task.progress === 'brief')
-    return flow.value.briefStatus === 'changes_requested' ? '等待运营审核客户意见，再由 Agent 重整 Brief。' : '运营确认 Brief 后才启动执行；客户可查看任务目标与执行范围。'
+    return flow.value.briefStatus === 'changes_requested' ? '等待专家审核客户意见，再由 Agent 重整 Brief。' : '专家确认 Brief 后才启动执行；客户可查看任务目标与执行范围。'
   if (props.task.progress === 'client_content_review')
     return '请确认文案结果；需要修改时直接点击正文编辑，保存后再确认。'
   if (['human', 'client_review'].includes(props.task.progress))
-    return reviewOwner(props.task, props.serviceMode) === 'ops' ? '等待运营完成修复专业审核，再交客户确认。' : '等待客户确认产物、业务事实与交付范围。'
+    return reviewOwner(props.task, props.serviceMode) === 'ops' ? '等待专家完成修复专业审核，再交客户确认。' : '等待客户确认产物、业务事实与交付范围。'
   if (props.task.progress === 'site_publish')
     return props.role === 'ops' ? '验证已通过，等待客户确认发布上线。' : 'AI 建站修改与 GEO 验证均已通过，请确认发布上线。'
   if (props.task.progress === 'recheck')
     return '发布/交付已完成，正在等待新的监测轮次进行官网核验。'
-  return ['publish'].includes(props.task.progress) ? '客户确认发布门禁，开始官网复测。' : `等待${props.serviceMode === 'managed' ? '运营' : '客户'}检查并提交 AI 建站执行包。`
+  return ['publish'].includes(props.task.progress) ? '客户确认发布门禁，开始官网复测。' : `等待${props.serviceMode === 'managed' ? '专家' : '客户'}检查并提交 AI 建站执行包。`
 })
 const actionbarTitle = computed(() => {
   if (ignoredTask.value)
     return '本次审核事项已忽略'
   if (props.task.progress === 'site_submit')
-    return '现在需要运营'
+    return '现在需要专家'
   if (props.task.progress === 'site_publish')
     return '现在需要客户'
   if (props.task.progress === 'recheck')
@@ -265,13 +265,13 @@ const actionbarDescription = computed(() => {
   if (customerFinalReview.value)
     return '请确认文案结果；需要修改时直接点击正文编辑，保存后再确认。'
   if (operationsWaitingForClientReview.value)
-    return '运营已审核通过，当前等待客户查看最新保存版本并确认最终稿。'
+    return '专家已审核通过，当前等待客户查看最新保存版本并确认最终稿。'
   if (operationsContentReview.value)
     return '请检查并修改内容；保存的版本会交接给客户。审核通过后，客户才能确认最终稿。'
   if (props.task.progress === 'client_content_review')
     return '请确认文案结果；需要修改时直接点击正文编辑，保存后再确认。'
   if (props.task.progress === 'site_submit')
-    return props.role === 'ops' ? '执行包已经准备完成，请提交 AI 建站开始网站修改。' : '执行包已准备完成，等待运营提交 AI 建站开始网站修改。'
+    return props.role === 'ops' ? '执行包已经准备完成，请提交 AI 建站开始网站修改。' : '执行包已准备完成，等待专家提交 AI 建站开始网站修改。'
   if (props.task.progress === 'site_publish')
     return props.role === 'ops' ? '验证已通过，等待客户确认发布上线。' : 'AI 建站修改与 GEO 验证均已通过，请确认发布上线。'
   if (props.task.progress === 'recheck')
@@ -465,7 +465,7 @@ function versionDiff(index: number) {
                   data-test="workflow-role-ops"
                   @click="emit('setTestRole', 'ops')"
                 >
-                  运营
+                  专家
                 </Button>
                 <Button
                   variant="secondary"
@@ -605,7 +605,7 @@ function versionDiff(index: number) {
                       <textarea v-model="directInstruction" rows="3" placeholder="例如：重点介绍本地服务与代理支持；不要写未经确认的价格或交期。" />
                     </label>
                     <div v-else class="tw-content-basis__instruction">
-                      <span><strong>任务补充说明</strong><small>{{ serviceMode === 'agent' ? '由客户补充' : '由运营维护' }}</small></span>
+                      <span><strong>任务补充说明</strong><small>{{ serviceMode === 'agent' ? '由客户补充' : '由专家维护' }}</small></span>
                       <p class="tw-content-basis__instruction-value">
                         {{ directInstruction || '暂无补充说明' }}
                       </p>
@@ -615,7 +615,7 @@ function versionDiff(index: number) {
                       <input v-model="webSupplement" type="checkbox" @change="saveWebSupplementSetting">
                     </label>
                     <div v-else class="tw-web-supplement is-disabled">
-                      <span><strong>知识不足时联网补充</strong><small>{{ serviceMode === 'agent' ? '请在审核阶段调整' : '该设置由运营维护' }}</small></span>
+                      <span><strong>知识不足时联网补充</strong><small>{{ serviceMode === 'agent' ? '请在审核阶段调整' : '该设置由专家维护' }}</small></span>
                       <span class="tw-web-supplement__value">{{ webSupplement ? '已开启' : '未开启' }}</span>
                     </div>
                     <div v-if="editableBrief" class="tw-content-basis__actions">
@@ -643,7 +643,7 @@ function versionDiff(index: number) {
                     Task 草稿 · Brief 确认
                   </h3>
                   <p v-if="role === 'client' || flow.briefStatus !== 'ready'">
-                    {{ serviceMode === 'agent' ? '请补充资料或说明，确认后由 AI 生成内容。' : role === 'client' ? 'Brief 由运营维护并确认。此页面仅展示任务目标、范围与依据，不提供编辑操作。' : waitingFor }}
+                    {{ serviceMode === 'agent' ? '请补充资料或说明，确认后由 AI 生成内容。' : role === 'client' ? 'Brief 由专家维护并确认。此页面仅展示任务目标、范围与依据，不提供编辑操作。' : waitingFor }}
                   </p>
                   <p v-if="message" class="tw-success" role="status">
                     {{ message }}
@@ -653,11 +653,11 @@ function versionDiff(index: number) {
                   </p>
                 </div>
                 <div v-if="editableBrief && flow.briefStatus === 'ready'" class="tw-actions">
-                  <Button class="tw-ignore-action" variant="secondary" data-test="ignore-task" :disabled="!canIgnoreCurrentStep" :title="canIgnoreCurrentStep ? undefined : `当前步骤由${ignoreOwner(task, serviceMode) === 'ops' ? '运营' : '客户'}负责`" @click="drawer = 'ignore'">
+                  <Button class="tw-ignore-action" variant="secondary" data-test="ignore-task" :disabled="!canIgnoreCurrentStep" :title="canIgnoreCurrentStep ? undefined : `当前步骤由${ignoreOwner(task, serviceMode) === 'ops' ? '专家' : '客户'}负责`" @click="drawer = 'ignore'">
                     忽略
                   </Button>
                   <Button variant="primary" :disabled="!editableBrief" :title="gate.length ? `还需完成：${gate.join('；')}` : undefined" @click="confirmTask">
-                    {{ serviceMode === 'agent' ? '确认并生成内容' : '运营审核通过并生成内容' }}
+                    {{ serviceMode === 'agent' ? '确认并生成内容' : '专家审核通过并生成内容' }}
                   </Button>
                 </div>
                 <Button v-else-if="flow.briefStatus === 'changes_requested' && role === 'ops' && serviceMode === 'managed'" @click="act('rework_brief')">
@@ -771,7 +771,7 @@ function versionDiff(index: number) {
         <Button v-if="operationsWaitingForClientReview" variant="secondary" disabled data-test="waiting-client-final-review">
           等待客户确认最终稿
         </Button>
-        <Button v-else-if="!customerFinalReview && !ignoredTask && task.progress !== 'done'" class="tw-ignore-action" variant="secondary" data-test="ignore-task" :disabled="!canIgnoreCurrentStep" :title="canIgnoreCurrentStep ? undefined : `当前步骤由${ignoreOwner(task, serviceMode) === 'ops' ? '运营' : '客户'}负责`" @click="drawer = 'ignore'">
+        <Button v-else-if="!customerFinalReview && !ignoredTask && task.progress !== 'done'" class="tw-ignore-action" variant="secondary" data-test="ignore-task" :disabled="!canIgnoreCurrentStep" :title="canIgnoreCurrentStep ? undefined : `当前步骤由${ignoreOwner(task, serviceMode) === 'ops' ? '专家' : '客户'}负责`" @click="drawer = 'ignore'">
           忽略
         </Button>
         <template v-if="reviewing">
@@ -782,7 +782,7 @@ function versionDiff(index: number) {
             提交修改意见
           </Button>
           <Button variant="primary" @click="approveReview">
-            {{ operationsContentReview ? '运营审核通过，交客户确认' : role === 'ops' ? '审核通过，交客户确认' : '客户确认文案结果' }}
+            {{ operationsContentReview ? '专家审核通过，交客户确认' : role === 'ops' ? '审核通过，交客户确认' : '客户确认文案结果' }}
           </Button>
         </template>
         <Button v-if="siteOwner && task.progress === 'site_submit'" @click="act('submit_site', { simulateFailure })">
@@ -881,3 +881,4 @@ function versionDiff(index: number) {
 </template>
 
 <style src="../../styles/task-workspace.css" />
+

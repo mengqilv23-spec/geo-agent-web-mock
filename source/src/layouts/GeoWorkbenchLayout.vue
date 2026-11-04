@@ -39,7 +39,7 @@ const sidebarSections = [
   { heading: '增长入口', items: [{ label: '网站智能体', icon: 'dashboard', route: 'overview', children: [
     { label: '网站概览', route: 'overview' },
     { label: '网站审查', route: 'diagnosis' },
-    { label: '内容运营', route: 'optimization' },
+    { label: '内容专家', route: 'optimization' },
     { label: '智能落地页', route: 'optimization' },
     { label: '留资线索', route: 'overview' },
     { label: '数据分析', route: 'report-center' },
@@ -137,14 +137,14 @@ const managedFlowSteps: Record<FlowType, Array<{ title: string, description: str
   diagnosis: [
     { title: '监测形成诊断', description: 'Agent 根据监测、官网体检与买家 Gap 形成 Finding。' },
     { title: '判断处理出口', description: '确定性问题直接生成修复 Task；策略型问题生成候选策略；仅提供建议项无需审核或执行。' },
-    { title: '完成两级审核', description: '运营审核诊断问题与候选策略，通过后交客户审核。' },
+    { title: '完成两级审核', description: '专家审核诊断问题与候选策略，通过后交客户审核。' },
     { title: '进入优化中心', description: '客户审核通过后，Agent 去重并创建或关联 Task 草稿。' },
     { title: '执行与效果回流', description: '任务发布后 Re-check，结果回写诊断与 Agent 学习。' },
   ],
   optimization: [
     { title: 'Brief确认', description: '确认目标、范围与关键业务事实。' },
     { title: '内容生成', description: 'Agent生成文章并运行自动质检。' },
-    { title: '文章审核', description: '客户或运营审核文章内容。' },
+    { title: '文章审核', description: '客户或专家审核文章内容。' },
     { title: '最终稿确认', description: '确认官网内容版本。' },
     { title: '官网核验', description: '官网返回处理结果。' },
     { title: '完成', description: '流程完成。' },
@@ -405,11 +405,11 @@ watch(serviceMode, (mode) => {
   restore(mode)
   seedPendingRepairExamples()
   syncDirectRepairs()
-  notify(mode === 'managed' ? '已切换到 AI + 运营 + 客户版' : '已切换到 AI + 客户版')
+  notify(mode === 'managed' ? '已切换到 AI + 专家 + 客户版' : '已切换到 AI + 客户版')
 })
 function toggleFinding(id: string) {
   if (!canReview.value) {
-    notify('当前为客户角色，诊断问题由运营审核')
+    notify('当前为客户角色，诊断问题由专家审核')
     return
   }
   const finding = findings.find(item => item.id === id)
@@ -418,7 +418,7 @@ function toggleFinding(id: string) {
 }
 function selectAllFindings(ids: string[]) {
   if (!canReview.value) {
-    notify('当前为客户角色，诊断问题由运营审核')
+    notify('当前为客户角色，诊断问题由专家审核')
     return
   }
   const selected = findings.filter(finding => ids.includes(finding.id) && !isReadOnlyFinding(finding) && finding.status === '待处理')
@@ -427,7 +427,7 @@ function selectAllFindings(ids: string[]) {
 }
 function approveSelectedFindings() {
   if (!canReview.value) {
-    notify('当前为客户角色，诊断问题由运营审核')
+    notify('当前为客户角色，诊断问题由专家审核')
     return
   }
   const selected = findings.filter(finding => !isReadOnlyFinding(finding) && finding.checked && finding.status === '待处理')
@@ -436,7 +436,7 @@ function approveSelectedFindings() {
     return
   }
   selected.forEach(finding => processFinding(finding, false))
-  notify('运营已审核，等待客户审核')
+  notify('专家已审核，等待客户审核')
 }
 function confirmStrategy(strategy: Strategy) {
   const linked = tasks.find(task => task.strategy === strategy.id || task.relatedStrategies.includes(strategy.id))
@@ -452,17 +452,17 @@ function confirmStrategy(strategy: Strategy) {
   if (serviceMode.value === 'managed' && strategy.reviewStage !== 'customer' && role.value === 'ops') {
     strategy.reviewStage = 'customer'
     reviewNotes[strategy.id] ??= []
-    reviewNotes[strategy.id].push({ role: 'ops', name: '运营', time: '刚刚', text: '运营审核通过，等待客户审核。' })
-    notify('运营已审核，等待客户审核')
+    reviewNotes[strategy.id].push({ role: 'ops', name: '专家', time: '刚刚', text: '专家审核通过，等待客户审核。' })
+    notify('专家已审核，等待客户审核')
     drawer.type = null
     return
   }
   if (serviceMode.value === 'managed' && (strategy.reviewStage !== 'customer' || role.value !== 'client')) {
-    notify('请按运营、客户的顺序完成审核')
+    notify('请按专家、客户的顺序完成审核')
     return
   }
   if (serviceMode.value === 'agent' && !canReview.value) {
-    notify('候选策略由运营完成专业审核，客户在 Brief 阶段确认业务信息')
+    notify('候选策略由专家完成专业审核，客户在 Brief 阶段确认业务信息')
     return
   }
   if (serviceMode.value === 'agent') {
@@ -488,9 +488,9 @@ function confirmStrategy(strategy: Strategy) {
   const task = serviceMode.value === 'agent' && (!strategyGapEvidence(strategy, personas) || clientStrategyPlan(strategy).kind === 'verify') ? createVerificationTask(tasks, strategy) : orchestrateStrategy(tasks, strategy)
   if (serviceMode.value === 'managed') strategy.reviewStage = undefined
   reviewNotes[strategy.id] ??= []
-  reviewNotes[strategy.id].push({ role: role.value, name: role.value === 'ops' ? '运营' : '客户', time: '刚刚', text: `${role.value === 'ops' ? '运营' : '客户'}审核通过，Agent 已自动编排关联 Task 草稿。` })
+  reviewNotes[strategy.id].push({ role: role.value, name: role.value === 'ops' ? '专家' : '客户', time: '刚刚', text: `${role.value === 'ops' ? '专家' : '客户'}审核通过，Agent 已自动编排关联 Task 草稿。` })
   reviewNotes[task.id] ??= []
-  notify(serviceMode.value === 'agent' ? '问题已确认，已生成任务。下一步请确认任务 Brief。' : `${displayObjectCodes(strategy.id)} 已审核，任务已进入优化中心，等待运营确认 Brief。`, task)
+  notify(serviceMode.value === 'agent' ? '问题已确认，已生成任务。下一步请确认任务 Brief。' : `${displayObjectCodes(strategy.id)} 已审核，任务已进入优化中心，等待专家确认 Brief。`, task)
 }
 function openStrategy(strategy: Strategy) {
   reviewText.value = ''
@@ -517,7 +517,7 @@ function ignoreStrategy(strategy: Strategy) {
   strategy.ignored = true
   strategy.reviewNote = `${reviewCategory.value}：${reviewText.value.trim()}`
   reviewNotes[strategy.id] ??= []
-  reviewNotes[strategy.id].push({ role: role.value, name: role.value === 'ops' ? '运营' : '客户', time: '刚刚', text: `忽略候选策略 · ${strategy.reviewNote}` })
+  reviewNotes[strategy.id].push({ role: role.value, name: role.value === 'ops' ? '专家' : '客户', time: '刚刚', text: `忽略候选策略 · ${strategy.reviewNote}` })
   notify('已记录忽略原因，来源诊断仍保留')
   strategyIgnoreMode.value = false
   reviewCategory.value = ''
@@ -617,7 +617,7 @@ function changeReviewPriority(value: Priority) {
   item.priority = value
   selected.priority = value
   reviewNotes[item.id] ??= []
-  reviewNotes[item.id].push({ role: role.value, name: role.value === 'ops' ? '运营' : '客户', time: '刚刚', text: `调整优先级：${previous} → ${value}` })
+  reviewNotes[item.id].push({ role: role.value, name: role.value === 'ops' ? '专家' : '客户', time: '刚刚', text: `调整优先级：${previous} → ${value}` })
 }
 function processFinding(finding: AuditFinding, showNotification = true) {
   finding = findings.find(item => item.id === finding.id) ?? finding
@@ -626,8 +626,8 @@ function processFinding(finding: AuditFinding, showNotification = true) {
     finding.status = '待客户审核'
     finding.checked = false
     reviewNotes[finding.id] ??= []
-    reviewNotes[finding.id].push({ role: 'ops', name: '运营', time: '刚刚', text: '运营审核通过，等待客户审核。' })
-    if (showNotification) notify('运营已审核，等待客户审核')
+    reviewNotes[finding.id].push({ role: 'ops', name: '专家', time: '刚刚', text: '专家审核通过，等待客户审核。' })
+    if (showNotification) notify('专家已审核，等待客户审核')
     drawer.type = null
     return
   }
@@ -647,7 +647,7 @@ function processFinding(finding: AuditFinding, showNotification = true) {
     reviewNotes[task.id] ??= []
     reviewNotes[task.id].push({ role: 'client', name: '客户', time: '刚刚', text: '官网内容问题审核通过，已生成独立任务，等待确认 Brief。' })
     if (showNotification)
-      notify('官网内容问题已审核，任务已进入优化中心，等待运营确认 Brief。', task)
+      notify('官网内容问题已审核，任务已进入优化中心，等待专家确认 Brief。', task)
   }
   else {
     if (finding.status !== '待处理' && !(serviceMode.value === 'managed' && role.value === 'client' && finding.status === '待客户审核'))
@@ -678,7 +678,7 @@ function deferFinding(finding: AuditFinding) {
   }
   finding.status = '暂不修复'
   finding.decisionReason = `${deferReason.value}：${reviewText.value.trim()}`
-  finding.feedback = `${role.value === 'ops' ? '运营' : '客户'} · ${finding.decisionReason}`
+  finding.feedback = `${role.value === 'ops' ? '专家' : '客户'} · ${finding.decisionReason}`
   reviewText.value = ''
   deferReason.value = ''
   deferMode.value = false
@@ -855,7 +855,7 @@ provide(geoWorkbenchRouteContextKey, {
       <div class="geo-app-header__account" aria-label="当前账户">
         <span class="geo-app-header__theme" aria-hidden="true">◐</span>
         <span class="geo-app-header__avatar" aria-hidden="true">{{ serviceMode === 'agent' ? '客' : '运' }}</span>
-        <span>{{ serviceMode === 'agent' ? '客户' : '运营管理员' }}</span>
+        <span>{{ serviceMode === 'agent' ? '客户' : '专家管理员' }}</span>
         <AppIcon name="chevronDown" :size="14" />
       </div>
     </header>
@@ -1062,7 +1062,7 @@ provide(geoWorkbenchRouteContextKey, {
           </div>
         </div><section class="geo-flow-roles">
           <header class="geo-flow-roles__head">
-            <h3>角色分工</h3><span>{{ serviceMode === 'managed' ? '代运营模式' : 'Agent 自主模式' }}</span>
+            <h3>角色分工</h3><span>{{ serviceMode === 'managed' ? 'GEO专家模式' : 'Agent 自主模式' }}</span>
           </header>
           <table class="geo-flow-role-table">
             <thead>
@@ -1082,7 +1082,7 @@ provide(geoWorkbenchRouteContextKey, {
               </tr>
               <tr v-if="serviceMode === 'managed'">
                 <th scope="row">
-                  运营
+                  专家
                 </th><td>专业审核、人工纠偏、提交 AI 建站和异常处理</td>
               </tr>
               <tr>

@@ -9,18 +9,18 @@ export interface TaskFlowStep {
 }
 
 const websiteSteps = [
-  ['Task Brief 确认', '运营'],
+  ['Task Brief 确认', 'GEO专家'],
   ['内容生成', 'Agent执行'],
-  ['内容优化', '运营 + Agent执行'],
+  ['内容优化', 'GEO专家+Agent执行'],
   ['内容确认', '客户审核'],
   ['AI 建站执行发布', '跨 Agent'],
   ['发布结果', '执行中'],
 ] as const
 
 const externalSteps = [
-  ['Task Brief 确认', '运营'],
+  ['Task Brief 确认', 'GEO专家'],
   ['内容生成', 'Agent 执行'],
-  ['内容优化', '运营 + Agent 执行'],
+  ['内容优化', 'GEO专家 + Agent 执行'],
   ['内容确认', '客户审核'],
 ] as const
 
@@ -99,3 +99,4 @@ export function taskFlowFor(task: GeoTask, serviceMode: ServiceMode = 'managed')
     state: index < current ? 'done' : index === current ? 'current' : 'upcoming',
   }))
 }
+

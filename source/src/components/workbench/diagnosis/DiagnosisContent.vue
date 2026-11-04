@@ -430,7 +430,7 @@ function summaryText({ total, page, pages }: { total: number, page: number, page
           <h2 id="strategy-title">
             <span class="geo-section-heading__number" aria-hidden="true">3</span>
             <span>决策因子驱动的候选策略</span>
-            <Tooltip :content="serviceMode === 'agent' ? '候选策略依据人设认知 GAP、回答证据与原因核查结果提出。客户审核通过后生成任务；不处理时请填写原因。' : '候选策略依据人设认知 GAP、回答证据与原因核查结果提出。运营审核后交客户确认；客户审核通过后生成任务。'" placement="right">
+            <Tooltip :content="serviceMode === 'agent' ? '候选策略依据人设认知 GAP、回答证据与原因核查结果提出。客户审核通过后生成任务；不处理时请填写原因。' : '候选策略依据人设认知 GAP、回答证据与原因核查结果提出。专家审核后交客户确认；客户审核通过后生成任务。'" placement="right">
               <button type="button" class="geo-help" aria-label="候选策略说明">?</button>
             </Tooltip>
           </h2>

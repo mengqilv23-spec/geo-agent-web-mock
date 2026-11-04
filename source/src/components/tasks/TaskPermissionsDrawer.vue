@@ -14,11 +14,11 @@ const managedPermissions = [
   { ability: '生成候选策略 GS', agent: '自动', ops: '可审核 / 修改 / 调优先级', client: '不负责写策略' },
   { ability: '修改策略专业方法', agent: '给出建议', ops: '允许', client: '不可直接修改' },
   { ability: '确认业务事实', agent: '不能替代客户', ops: '可提出疑点', client: '最终确认' },
-  { ability: '确认是否执行策略', agent: '不可最终确认', ops: '代运营先审核', client: '最终确认' },
+  { ability: '确认是否执行策略', agent: '不可最终确认', ops: '专家先审核', client: '最终确认' },
   { ability: '扫描 / 去重 / 合并', agent: '自动扫描', ops: '复杂冲突可处理', client: '仅重大范围变化时介入' },
-  { ability: '审核生成内容', agent: '自动质检', ops: '代运营专业质检', client: '终审关键内容' },
-  { ability: '官网发布', agent: '确认后自动推送', ops: '可代运营推送', client: '关键发布确认' },
-  { ability: '外部平台发布', agent: '只生成 / 交付', ops: '代运营可执行', client: '自主模式自行发布' },
+  { ability: '审核生成内容', agent: '自动质检', ops: '专家专业质检', client: '终审关键内容' },
+  { ability: '官网发布', agent: '确认后自动推送', ops: '可由专家推送', client: '关键发布确认' },
+  { ability: '外部平台发布', agent: '只生成 / 交付', ops: '专家可执行', client: '自主模式自行发布' },
 ]
 const permissions = computed(() => props.serviceMode !== 'agent' ? managedPermissions : [
   { ability: '诊断问题审核', agent: '生成诊断与证据', client: '确认处理、忽略或暂缓' },
@@ -43,7 +43,7 @@ const permissions = computed(() => props.serviceMode !== 'agent' ? managedPermis
   >
     <div class="tp-content">
       <p class="tp-principle">
-        <strong>角色原则：</strong>{{ serviceMode === 'agent' ? 'AI 负责生成、质检与执行；客户负责审核、改写和确认。' : 'Agent 负责分析与自动执行；运营负责审核与修正；客户负责业务事实和是否执行的最终确认。' }}
+        <strong>角色原则：</strong>{{ serviceMode === 'agent' ? 'AI 负责生成、质检与执行；客户负责审核、改写和确认。' : 'Agent 负责分析与自动执行；专家负责审核与修正；客户负责业务事实和是否执行的最终确认。' }}
       </p>
       <div class="tp-table-scroll" role="region" tabindex="0" aria-label="角色权限对照表，可横向滚动">
         <table class="tp-table">
@@ -56,7 +56,7 @@ const permissions = computed(() => props.serviceMode !== 'agent' ? managedPermis
                 Agent
               </th>
               <th v-if="serviceMode !== 'agent'" scope="col">
-                运营
+                专家
               </th>
               <th scope="col">
                 客户
@@ -180,3 +180,4 @@ const permissions = computed(() => props.serviceMode !== 'agent' ? managedPermis
   justify-content: stretch;
 }
 </style>
+
