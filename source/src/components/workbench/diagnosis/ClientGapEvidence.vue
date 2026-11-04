@@ -15,7 +15,7 @@ const visibleTopics = computed(() => sample.value.topics.filter(topic => topic.g
 <template>
   <section class="client-gap-evidence">
     <div class="client-gap-head">
-      <h3>主题覆盖差距 <span title="只展示我方正向覆盖低于竞品，且已有对应策略的主题。" aria-label="主题覆盖差距说明">ⓘ</span></h3>
+      <h3>决策因子覆盖差距 <span title="只展示我方正向覆盖低于竞品，且已有对应策略的主题。" aria-label="决策因子覆盖差距说明">ⓘ</span></h3>
       <select :value="platform" aria-label="按 AI 平台筛选主题差距" @change="emit('setPlatform', ($event.target as HTMLSelectElement).value as DiagnosisPlatform)">
         <option value="全部平台">全部平台</option>
         <option v-for="item in diagnosisPlatforms" :key="item" :value="item">{{ item }}</option>
@@ -48,3 +48,4 @@ h3 span { color: var(--text-secondary); font-weight: 400; cursor: help; }
 .client-gap-row__bottom small { color: var(--text-secondary); }
 .client-gap-row__bottom em { flex: none; padding: 4px 8px; border-radius: 5px; background: var(--action-subtle-background); color: var(--action-accent); font-size: 12px; font-style: normal; }
 </style>
+

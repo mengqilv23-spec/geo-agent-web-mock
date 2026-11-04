@@ -129,7 +129,7 @@ export const auditFindings: AuditFinding[] = [
   { id: 'F7-1', title: 'Product Schema 缺失', detail: '碳纤维方案页缺少 Product 结构化数据。', check: '结构化数据', method: '官网修复', priority: 'P0', status: '待处理', checked: false, route: 'repair', routeReason: '缺失项明确，可按标准规则直接修复和验证。' },
   { id: 'F7-2', title: 'FAQ Schema 缺失', detail: '采购问答区已有内容，但未形成 FAQ 结构化数据。', check: '结构化数据', method: '官网修复', priority: 'P0', status: '待处理', checked: false, route: 'repair', routeReason: '已有 FAQ 内容，只需补齐机器可读标记。' },
   { id: 'F8-1', title: '认证编号未结构化', detail: '认证信息可见，但证书编号与适用范围未形成机器可读实体信息。', check: '品牌实体', method: '实体修复', priority: 'P1', status: '待处理', checked: false, route: 'repair', routeReason: '认证事实已存在，本次只补机器可读字段。' },
-  { id: 'F8-2', title: '专家作者档案待补', detail: '2 位工程师已有内容贡献，但缺少可验证的专业背景、经验与作者介绍。', check: '品牌实体', method: '实体修复', priority: 'P1', status: '待处理', checked: false, route: 'strategy', routeReason: '需要确认专家范围、身份事实和对外介绍方式。' },
+  { id: 'F8-2', title: '专家作者档案待补', detail: '2 位工程师已有内容贡献，但缺少可验证的专业背景、经验与作者介绍。', check: '品牌实体', method: '实体修复', priority: 'P1', status: '待处理', checked: false, route: 'strategy', evidence: '当前作者页仅显示两位工程师的姓名与内容贡献，缺少可核验的专业背景、从业经验及其与相关技术主题的关联，读者和 AI 难以判断作者资质与内容可信度。', advice: '核实并取得本人确认后，围绕工程师负责的技术领域、相关经验和代表性内容补充作者介绍，并将作者档案关联到对应文章；不要加入未经核实的资历或认证信息。', routeReason: '需要确认专家范围、身份事实和对外介绍方式。' },
   { id: 'F8-3', title: 'Organization sameAs 不完整', detail: 'Organization 已部署，但品牌官方外部实体关联仍不完整。', check: '品牌实体', method: '实体修复', priority: 'P1', status: '待处理', checked: false, route: 'repair', routeReason: '官方实体来源明确，可补齐 sameAs 关联。' },
   { id: 'F9', title: '跨平台地址口径不一致', detail: '官网 / LinkedIn / 行业名录存在 1 处地址字段口径冲突。', check: '跨平台一致性', method: '外部信源', priority: 'P1', status: '待处理', checked: false, route: 'repair', routeReason: '地址字段有冲突，先确认哪一个地址正确，再交 AI 建站修改并复核。' },
   { id: 'F7-3', title: '产品页分组导航建议', detail: '长产品页当前可正常读取，可在后续常规改版时评估增加分组锚点导航。', check: '结构化数据', method: '仅提供建议', priority: 'P3', status: '无需处理', checked: false, route: 'advice', category: '官网结构', evidence: '演示检查记录：主要产品内容可读取，当前未发现由分组导航缺失造成的抓取或信息抽取阻断。', advice: '后续常规改版时，可评估为规格、应用和问答区域增加锚点导航；本轮无需修改官网结构。', routeReason: '属于可选的浏览体验建议，本轮无需修复，不进入审核或执行流程。' },
@@ -299,3 +299,4 @@ export function nextProgress(progress: TaskProgress): TaskProgress {
 export function progressLabel(progress: TaskProgress) {
   return { brief: '待确认 Brief', todo: '待执行', running: '执行中', client_content_review: '待客户确认文案', human: '待人工处理', client_review: '待客户审核', publish: '待发布确认', site_submit: '待提交 AI 建站', site_submitted: '待官网审核', site_running: 'AI 建站执行中', site_returned: '官网已返回处理结果', site_verifying: 'GEO 验证中', site_publish: '发布门禁确认', site_failed: '验证未通过', recheck: '待复测', done: '已完成' }[progress]
 }
+

@@ -981,6 +981,10 @@ provide(geoWorkbenchRouteContextKey, {
               <dt>问题依据</dt><dd>{{ (drawer.item as AuditFinding).evidence || (drawer.item as AuditFinding).detail }}</dd>
               <dt>{{ isKnowledgeFinding(drawer.item as AuditFinding) ? '补充要求' : '参考建议' }}</dt><dd>{{ (drawer.item as AuditFinding).advice || (drawer.item as AuditFinding).routeReason }}</dd>
             </template>
+            <template v-else-if="serviceMode === 'managed'">
+              <dt>问题依据</dt><dd>{{ (drawer.item as AuditFinding).evidence || (drawer.item as AuditFinding).detail }}</dd>
+              <dt>参考建议</dt><dd>{{ (drawer.item as AuditFinding).advice || (drawer.item as AuditFinding).routeReason }}</dd>
+            </template>
             <template v-if="serviceMode === 'agent' && !isReadOnlyFinding(drawer.item as AuditFinding)">
               <dt>问题对象</dt><dd>{{ (drawer.item as AuditFinding).route === 'repair' ? '官网结构' : '官网内容' }}</dd>
               <dt>检测依据</dt><dd>{{ (drawer.item as AuditFinding).evidence || (drawer.item as AuditFinding).detail }}</dd>
@@ -1165,3 +1169,4 @@ provide(geoWorkbenchRouteContextKey, {
     </Transition>
   </div>
 </template>
+

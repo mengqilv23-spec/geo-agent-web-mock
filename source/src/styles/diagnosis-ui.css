@@ -2,6 +2,7 @@
 .geo-diagnosis .geo-panel__head { padding-block: var(--space-surface-content); }
 .geo-diagnosis .geo-panel__head p { max-width: 900px; font-size: 12px; line-height: 20px; }
 .geo-diagnosis .geo-panel__head h2 { display: flex; align-items: center; gap: 4px; font-size: 14px; line-height: 22px; }
+.geo-diagnosis .geo-persona-panel__subtitle { margin-left: 3em; color: var(--geo-text-secondary); font-size: 12px; font-weight: 400; }
 .geo-diagnosis .geo-check-grid { gap: 6px; padding: 12px var(--space-surface-content) 10px; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .geo-diagnosis .geo-check { min-height: 36px; padding: 5px 8px; border-radius: var(--radius-control); font-size: 14px; line-height: 22px; }
 .geo-diagnosis .geo-check-name { white-space: normal; }
@@ -189,3 +190,4 @@ html.ce-iframe-root .geo-diagnosis .geo-table-detail-button.geo-review-button:fo
 .geo-diagnosis .geo-finding-status.is-advice,
 .geo-finding-status.is-advice { border: 0; color: var(--text-secondary); background: var(--background-subtle); }
 .geo-check-pass-result { display: grid; min-height: 100px; place-items: center; color: var(--status-success-foreground); font-weight: 600; }
+

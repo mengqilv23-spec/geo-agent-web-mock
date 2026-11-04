@@ -406,9 +406,7 @@ function summaryText({ total, page, pages }: { total: number, page: number, page
           <h2 id="persona-title">
             <span class="geo-section-heading__number" aria-hidden="true">2</span>
             <span>买家人设 × 决策因子：认知 GAP</span>
-            <Tooltip content="买家看重的因素与 AI 回答中呈现的内容之间的差距分析" placement="right">
-              <button type="button" class="geo-help" aria-label="认知 GAP 说明">?</button>
-            </Tooltip>
+            <span class="geo-persona-panel__subtitle">买家看重的因素与 AI 回答中呈现的内容之间的差距分析</span>
           </h2>
         </div>
       </header>
@@ -420,7 +418,7 @@ function summaryText({ total, page, pages }: { total: number, page: number, page
       <div v-if="activePersonaData" class="geo-persona-body">
         <Card class="geo-radar-card">
           <div class="geo-card-head">
-            <strong>{{ activePersonaData.name }} · 买家决策因子对比</strong><span>我方正向覆盖率 / Flow 正向覆盖率</span>
+            <strong>{{ activePersonaData.name }} · 买家决策因子对比</strong><span>我方正向覆盖率 / 竞品正向覆盖率</span>
           </div><DeferredGeoRadarChart :factors="activePersonaData.factors" :title="activePersonaData.name" client-mode />
         </Card><ClientGapEvidence :persona="personas.find(persona => persona.id === activePersona) || personas[0]!" :linked-count="linkedStrategyCount" :platform="platformFilter" @set-platform="platformFilter = $event" @focus="focusGap" />
       </div>
@@ -431,7 +429,7 @@ function summaryText({ total, page, pages }: { total: number, page: number, page
         <div>
           <h2 id="strategy-title">
             <span class="geo-section-heading__number" aria-hidden="true">3</span>
-            <span>候选策略</span>
+            <span>决策因子驱动的候选策略</span>
             <Tooltip :content="serviceMode === 'agent' ? '候选策略依据人设认知 GAP、回答证据与原因核查结果提出。客户审核通过后生成任务；不处理时请填写原因。' : '候选策略依据人设认知 GAP、回答证据与原因核查结果提出。运营审核后交客户确认；客户审核通过后生成任务。'" placement="right">
               <button type="button" class="geo-help" aria-label="候选策略说明">?</button>
             </Tooltip>
@@ -523,3 +521,4 @@ function summaryText({ total, page, pages }: { total: number, page: number, page
 </style>
 
 <style src="../../../styles/diagnosis-ui.css"></style>
+

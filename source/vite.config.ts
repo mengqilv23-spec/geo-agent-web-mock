@@ -4,7 +4,7 @@ import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  base: env.GITHUB_ACTIONS === 'true' ? '/GEO-huibao-demo-1021/' : '/',
+  base: env.GITHUB_ACTIONS === 'true' ? '/geo-agent-web-mock/' : '/',
   plugins: [vue()],
   test: {
     environment: 'jsdom',
@@ -12,3 +12,4 @@ export default defineConfig({
     restoreMocks: true,
   },
 })
+
