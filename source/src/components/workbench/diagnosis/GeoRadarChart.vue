@@ -36,7 +36,7 @@ function getOption(): EChartsOption {
   const border = getToken('--border-default', '#E5E6EB')
   return {
     animation: !reduceMotion,
-    color: [brand, success, warning],
+    color: [warning, brand, success],
     tooltip: { trigger: 'item' },
     legend: {
       bottom: 0,
@@ -45,7 +45,7 @@ function getOption(): EChartsOption {
       itemWidth: 12,
       itemHeight: 8,
       textStyle: { color: textSecondary, fontSize: 12 },
-      data: props.clientMode ? ['我方覆盖', '竞品覆盖'] : ['买家重视度', '我方覆盖', '竞品覆盖'],
+      data: ['买家关注度', '我方覆盖', '竞品覆盖'],
     },
     radar: {
       center: ['50%', '44%'],
@@ -64,7 +64,7 @@ function getOption(): EChartsOption {
       symbolSize: 4,
       lineStyle: { width: 2 },
       data: [
-        ...(!props.clientMode ? [{ value: props.factors.map(factor => factor.buyer), name: '买家重视度', areaStyle: { opacity: 0.08 } }] : []),
+        { value: props.factors.map(factor => factor.attention ?? 0), name: '买家关注度', areaStyle: { opacity: 0.02 } },
         { value: props.factors.map(factor => factor.coverage), name: '我方覆盖', areaStyle: { opacity: 0.05 } },
         { value: props.factors.map(factor => factor.competitor), name: '竞品覆盖', areaStyle: { opacity: 0.04 } },
       ],
@@ -103,5 +103,5 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="chartElement" class="geo-radar-chart" role="img" :aria-label="clientMode ? `${title}雷达图：我方与竞品正向覆盖率` : `${title}雷达图：展示买家重视度、我方覆盖和竞品覆盖`" />
+  <div ref="chartElement" class="geo-radar-chart" role="img" :aria-label="`${title}雷达图：买家关注度、我方与竞品正向覆盖率，均以当前有效回答数为分母`" />
 </template>

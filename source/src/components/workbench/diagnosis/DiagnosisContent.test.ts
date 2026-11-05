@@ -36,7 +36,7 @@ describe('diagnosisContent icons', () => {
     expect(wrapper.get('.geo-page-intro h1 .overview-info-icon').attributes('aria-label')).toBe('诊断与策略说明')
     expect(wrapper.get('#audit-title .geo-section-heading__number').text()).toBe('1')
     expect(wrapper.get('#persona-title .geo-section-heading__number').text()).toBe('2')
-    expect(wrapper.get('#persona-title').text()).toContain('买家人设 × 决策因子：认知 GAP')
+    expect(wrapper.get('#persona-title').text()).toContain('买家关注点与品牌表现')
     expect(wrapper.find('.geo-persona-panel__subtitle').exists()).toBe(false)
     expect(wrapper.get('#persona-title .geo-help').attributes('aria-label')).toBe('认知 GAP 说明')
     expect(wrapper.get('#strategy-title .geo-section-heading__number').text()).toBe('3')

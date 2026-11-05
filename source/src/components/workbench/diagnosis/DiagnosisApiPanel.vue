@@ -109,10 +109,10 @@ function coverage(value: number | null) {
       </p>
       <div v-else class="table-scroll">
         <table>
-          <thead><tr><th>人设</th><th>阶段</th><th>决策因子</th><th>来源</th><th>买家重视度</th><th>我方覆盖</th><th>竞品覆盖</th></tr></thead>
+          <thead><tr><th>人设</th><th>阶段</th><th>决策因子</th><th>来源</th><th>我方覆盖</th><th>竞品覆盖</th></tr></thead>
           <tbody>
             <tr v-for="gap in gaps.records" :key="gap.id">
-              <td>{{ gap.personaName || '—' }}</td><td>{{ gap.personaStage || '—' }}</td><td>{{ gap.personaFactorName || '—' }}<small>{{ gap.personaFactorType || '—' }} · #{{ gap.id }}</small></td><td>{{ gap.sourceType || '—' }}</td><td>{{ coverage(gap.buyerImportance) }}</td><td>{{ coverage(gap.ourCoverage) }}</td><td>{{ coverage(gap.competitorCoverage) }}</td>
+              <td>{{ gap.personaName || '—' }}</td><td>{{ gap.personaStage || '—' }}</td><td>{{ gap.personaFactorName || '—' }}<small>{{ gap.personaFactorType || '—' }} · #{{ gap.id }}</small></td><td>{{ gap.sourceType || '—' }}</td><td>{{ coverage(gap.ourCoverage) }}</td><td>{{ coverage(gap.competitorCoverage) }}</td>
             </tr>
           </tbody>
         </table>

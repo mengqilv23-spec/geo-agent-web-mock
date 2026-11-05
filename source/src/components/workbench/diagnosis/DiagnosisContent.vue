@@ -49,7 +49,8 @@ const emit = defineEmits<{
   openPending: []
 }>()
 
-const layers: StrategyLayer[] = ['全部', '内容', '实体与信任', '外部信源']
+const layers: StrategyLayer[] = ['全部', '内容', '外部信源']
+const layerLabel = (layer: StrategyLayer) => layer === '内容' ? '官网内容' : layer
 const diagnosisStore = useDiagnosisStore()
 const { selectedGap } = storeToRefs(diagnosisStore)
 const platformFilter = shallowRef<DiagnosisPlatform>('全部平台')
@@ -93,7 +94,7 @@ const activePersonaData = computed(() => {
   const actionable = evidence.topics.filter(topic => topic.gap !== null && topic.gap > 0 && linkedStrategyCount(topic.name) > 0)
   return { ...persona, factors: persona.factors.flatMap(factor => {
     const topic = evidence.topics.find(item => item.name === factor.name && item.denominator > 0)
-    return topic ? [{ ...factor, coverage: topic.own!, competitor: topic.rival! }] : []
+    return topic ? [{ ...factor, attention: topic.attention!, coverage: topic.own!, competitor: topic.rival! }] : []
   }), gaps: actionable.map(topic => ({ name: topic.name, value: topic.gap! })) }
 })
 const queuePage = shallowRef(1)
@@ -106,7 +107,7 @@ const allStrategies = computed(() => props.allStrategies ?? props.strategies)
 const canReview = computed(() => props.role === (props.serviceMode === 'agent' ? 'client' : 'ops'))
 const gapAliases: Record<string, string[]> = {
   本地服务与培训: ['本地服务', '培训', '售后', '服务网络', '服务'],
-  认证与合规: ['认证', '合规', 'sameAs', 'Organization', '实体与信任'],
+  认证与合规: ['认证', '合规', 'sameAs', 'Organization'],
   交期与产能: ['交期', '产能', 'SLA', '交付'],
   交付稳定性: ['交期', '交付', '产能', 'SLA', '稳定交付'],
   供应链风险: ['供应链', '备件', '服务网络', '停机', '交期'],
@@ -405,8 +406,8 @@ function summaryText({ total, page, pages }: { total: number, page: number, page
         <div>
           <h2 id="persona-title">
             <span class="geo-section-heading__number" aria-hidden="true">2</span>
-            <span>买家人设 × 决策因子：认知 GAP</span>
-            <span class="geo-persona-panel__subtitle">买家看重的因素与 AI 回答中呈现的内容之间的差距分析</span>
+            <span>买家关注点与品牌表现</span>
+            <span class="geo-persona-panel__subtitle">基于买家人设下的 AI 回答，识别关注话题、品牌覆盖差距与优化机会</span>
           </h2>
         </div>
       </header>
@@ -418,7 +419,7 @@ function summaryText({ total, page, pages }: { total: number, page: number, page
       <div v-if="activePersonaData" class="geo-persona-body">
         <Card class="geo-radar-card">
           <div class="geo-card-head">
-            <strong>{{ activePersonaData.name }} · 买家决策因子对比</strong><span>我方正向覆盖率 / 竞品正向覆盖率</span>
+            <strong>{{ activePersonaData.name }} · 关注点与品牌覆盖</strong><span>关注度 / 我方正向覆盖率 / 竞品正向覆盖率（同一回答分母）</span>
           </div><DeferredGeoRadarChart :factors="activePersonaData.factors" :title="activePersonaData.name" client-mode />
         </Card><ClientGapEvidence :persona="personas.find(persona => persona.id === activePersona) || personas[0]!" :linked-count="linkedStrategyCount" :platform="platformFilter" @set-platform="platformFilter = $event" @focus="focusGap" />
       </div>
@@ -446,7 +447,7 @@ function summaryText({ total, page, pages }: { total: number, page: number, page
       <div class="geo-strategy-toolbar">
         <div class="geo-tabs" role="tablist" aria-label="策略类型">
           <button v-for="layer in layers" :key="layer" type="button" role="tab" :aria-selected="strategyLayer === layer" :class="{ 'is-active': strategyLayer === layer }" @click="emit('setStrategyLayer', layer)">
-            <span>{{ layer }}</span><small>{{ ` · ${layerCounts[layer]}` }}</small>
+            <span>{{ layerLabel(layer) }}</span><small>{{ ` · ${layerCounts[layer]}` }}</small>
           </button>
         </div>
       </div>
@@ -471,7 +472,7 @@ function summaryText({ total, page, pages }: { total: number, page: number, page
             <span class="geo-chip" :class="strategyFromRow(strategy).priority === 'P0' ? 'geo-chip--danger' : ''">{{ strategyFromRow(strategy).priority }}</span>
           </template>
           <template #cell-type="{ item: strategy }">
-            <span class="geo-chip">{{ strategyFromRow(strategy).layer }}</span>
+            <span class="geo-chip">{{ layerLabel(strategyFromRow(strategy).layer) }}</span>
           </template>
           <template #cell-description="{ item: strategy }">
             <Tooltip :content="strategyFromRow(strategy).title" :overflow-only="true">
@@ -521,4 +522,3 @@ function summaryText({ total, page, pages }: { total: number, page: number, page
 </style>
 
 <style src="../../../styles/diagnosis-ui.css"></style>
-

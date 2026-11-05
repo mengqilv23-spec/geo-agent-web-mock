@@ -3,26 +3,29 @@ import { officialContentSnapshot } from '../data/geo-data'
 
 export const diagnosisPlatforms = ['ChatGPT', 'Perplexity', 'Google AI'] as const
 export type DiagnosisPlatform = '全部平台' | typeof diagnosisPlatforms[number]
-export interface TopicAnswer { id: string, theme: string, platform?: typeof diagnosisPlatforms[number], ownPositive: boolean, rivalPositive: boolean, negative: boolean }
+export interface TopicAnswer { id: string, theme: string, platform?: typeof diagnosisPlatforms[number], topicPresent?: boolean, ownPositive: boolean, rivalPositive: boolean, negative: boolean }
 export function topicMetrics(answers: readonly TopicAnswer[], theme: string) {
   const unique = new Map<string, TopicAnswer>()
   for (const row of answers.filter(row => row.theme === theme)) {
     const previous = unique.get(row.id)
-    unique.set(row.id, previous ? { ...row, ownPositive: row.ownPositive || previous.ownPositive, rivalPositive: row.rivalPositive || previous.rivalPositive, negative: row.negative || previous.negative } : row)
+    unique.set(row.id, previous ? { ...row, topicPresent: (row.topicPresent ?? true) || (previous.topicPresent ?? true), ownPositive: row.ownPositive || previous.ownPositive, rivalPositive: row.rivalPositive || previous.rivalPositive, negative: row.negative || previous.negative } : row)
   }
   const relevant = [...unique.values()]
   const denominator = relevant.length
   const ownHits = relevant.filter(row => row.ownPositive).length
   const rivalHits = relevant.filter(row => row.rivalPositive).length
+  const attentionHits = relevant.filter(row => row.topicPresent ?? true).length
+  const attention = denominator ? Number((attentionHits / denominator * 100).toFixed(2)) : null
   const own = denominator ? Number((ownHits / denominator * 100).toFixed(2)) : null
   const rival = denominator ? Number((rivalHits / denominator * 100).toFixed(2)) : null
-  return { denominator, ownHits, rivalHits, own, rival, gap: own === null || rival === null ? null : Number((rival - own).toFixed(2)), negative: relevant.filter(row => row.negative).length, answerIds: relevant.map(row => row.id) }
+  return { denominator, attentionHits, attention, ownHits, rivalHits, own, rival, gap: own === null || rival === null ? null : Number((rival - own).toFixed(2)), negative: relevant.filter(row => row.negative).length, answerIds: relevant.map(row => row.id) }
 }
 
 // Explicit prototype sampling fixtures; these records do not represent live collection.
 export function personaEvidence(persona: Persona, platform: DiagnosisPlatform = '全部平台') {
   const answers: TopicAnswer[] = persona.factors.filter(factor => factor.name !== '其他').flatMap((factor) => Array.from({ length: 100 }, (_, i) => ({
     id: `${persona.id}-${i + 1}`, theme: factor.name, platform: diagnosisPlatforms[i % diagnosisPlatforms.length]!,
+    topicPresent: i < Math.min(100, Math.max(factor.coverage, factor.competitor) + 8),
     ownPositive: i < factor.coverage, rivalPositive: i < factor.competitor, negative: false,
   })))
   const selectedAnswers = platform === '全部平台' ? answers : answers.filter(answer => answer.platform === platform)

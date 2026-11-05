@@ -41,7 +41,6 @@ export interface DiagnosisGap {
   personaFactorType: string
   personaFactorName: string
   sourceType: string
-  buyerImportance: number | null
   ourCoverage: number | null
   competitorCoverage: number | null
 }

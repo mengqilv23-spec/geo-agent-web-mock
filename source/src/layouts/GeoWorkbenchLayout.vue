@@ -266,7 +266,9 @@ function restore(mode: ServiceMode) {
         if (!findings.some(item => item.id === example.id)) findings.push({ ...example })
       }
     }
-    const restoredStrategies = data.strategies.filter(item => ['内容', '实体与信任', '外部信源'].includes(item.layer) || item.id === 'GS5')
+    const restoredStrategies = data.strategies
+      .filter(item => ['内容', '实体与信任', '外部信源'].includes(String(item.layer)) || item.id === 'GS5')
+      .map(item => ({ ...item, layer: (String(item.layer) === '实体与信任' ? '内容' : item.layer) as Strategy['layer'] }))
     for (const item of restoredStrategies) {
       if (!['GS5', 'GS1'].includes(item.id)) continue
       const current = strategies.find(strategy => strategy.id === item.id)!
@@ -1169,4 +1171,3 @@ provide(geoWorkbenchRouteContextKey, {
     </Transition>
   </div>
 </template>
-

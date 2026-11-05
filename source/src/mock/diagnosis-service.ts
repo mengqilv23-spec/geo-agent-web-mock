@@ -24,7 +24,7 @@ export async function getDiagnosisIssues(query: DiagnosisQuery): Promise<Diagnos
   return paginate(rows, query)
 }
 export async function getDiagnosisGaps(query: DiagnosisQuery): Promise<DiagnosisPage<DiagnosisGap>> {
-  const rows = readMockState().config.personas.flatMap(persona => (persona.focusTopics.length ? persona.focusTopics : ['综合表现']).map((topic, index) => ({ id: persona.id * 10 + index, taskId: 1, personaName: persona.personaName, personaStage: persona.purchaseStages[0] ?? '供应商评估', personaFactorType: '主题', personaFactorName: topic, sourceType: '本地分析', buyerImportance: 80, ourCoverage: 55, competitorCoverage: 70 })))
+  const rows = readMockState().config.personas.flatMap(persona => (persona.focusTopics.length ? persona.focusTopics : ['综合表现']).map((topic, index) => ({ id: persona.id * 10 + index, taskId: 1, personaName: persona.personaName, personaStage: persona.purchaseStages[0] ?? '供应商评估', personaFactorType: '主题', personaFactorName: topic, sourceType: '本地分析', ourCoverage: 55, competitorCoverage: 70 })))
   return paginate(rows, query)
 }
 export async function getDiagnosisStrategies(query: DiagnosisQuery): Promise<DiagnosisPage<DiagnosisStrategy>> { return paginate(mockStrategies(), query) }

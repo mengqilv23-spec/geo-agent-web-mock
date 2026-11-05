@@ -2,7 +2,7 @@ export const strategies = [
   {
     "id": "GS1",
     "title": "碳纤维方案页品牌显影：对比表 + FAQ + 品牌实体加密",
-    "layer": "实体与信任",
+    "layer": "内容",
     "priority": "P0",
     "description": "在碳纤维方案页补充可引用的对比表、FAQ 与品牌实体信息，让 AI 在引用页面时准确识别品牌。",
     "evidence": "页面被 Perplexity 引为来源，但回答只推荐 Flow",
@@ -300,7 +300,7 @@ export const strategies = [
   {
     "id": "GS14",
     "title": "工程师专家档案实体统一与同名消歧",
-    "layer": "实体与信任",
+    "layer": "内容",
     "priority": "P1",
     "description": "补充可验证的工程师身份、专业背景和实体关联，统一作者档案并消除同名歧义。",
     "evidence": "2 位工程师已有内容贡献，但缺少可验证作者 / 专家实体档案。",
@@ -318,4 +318,3 @@ export const strategies = [
     "confirmed": false
   }
 ]
-
