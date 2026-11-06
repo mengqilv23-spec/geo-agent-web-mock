@@ -3,8 +3,9 @@ import type { GeoTask } from '../../data/geo-data'
 import type { TaskBrief, TaskWorkflow } from '../../workflows/task-workflow'
 import Card from '../ui/ce/card/Card.vue'
 import Tag from '../ui/ce/tag/Tag.vue'
+import { computed } from 'vue'
 
-defineProps<{
+const props = defineProps<{
   task: GeoTask
   brief: TaskBrief
   site: TaskWorkflow['site']
@@ -12,6 +13,7 @@ defineProps<{
   statusLabel: string
   statusTone: 'blue' | 'green' | 'red' | 'neutral'
 }>()
+const previewHref = computed(() => `${import.meta.env.BASE_URL}optimization/tasks/${encodeURIComponent(props.task.id)}/preview`)
 </script>
 
 <template>
@@ -39,7 +41,7 @@ defineProps<{
             <dt>目标页面</dt><dd>{{ site.targetPage || brief.executionTarget }}</dd>
           </div>
           <div class="tw-site-field">
-            <dt>变更类型</dt><dd>{{ site.changeType || '官网内容更新' }}</dd>
+            <dt>变更类型</dt><dd>{{ task.type === 'repair' ? '官网结构与技术' : site.changeType || '官网内容更新' }}</dd>
           </div>
           <div class="tw-site-field">
             <dt>执行内容</dt><dd>{{ methods.join('、') || '待确认执行方法' }}</dd>
@@ -68,7 +70,7 @@ defineProps<{
               <dt>修改摘要</dt><dd>{{ site.requirements || '按已确认执行包完成页面修改。' }}</dd>
             </div>
             <div class="tw-site-field">
-              <dt>预览版本</dt><dd>{{ site.preview || '尚未生成' }}</dd>
+              <dt>预览版本</dt><dd><a v-if="site.preview" :href="previewHref" target="_blank" rel="noopener noreferrer">{{ site.preview }} · 打开预览</a><span v-else>尚未生成</span></dd>
             </div>
             <div class="tw-site-field">
               <dt>自动检查</dt><dd>{{ site.result || '检查结果待回传' }}</dd>

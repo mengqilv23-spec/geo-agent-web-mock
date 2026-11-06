@@ -13,8 +13,9 @@ const websiteSteps = [
   ['内容生成', 'Agent执行'],
   ['内容优化', 'GEO专家+Agent执行'],
   ['内容确认', '客户审核'],
-  ['AI 建站执行发布', '跨 Agent'],
-  ['发布结果', '执行中'],
+  ['官网执行与检测', 'AI 建站'],
+  ['预览链接与发布确认', '客户'],
+  ['发布结果', '系统'],
 ] as const
 
 const externalSteps = [
@@ -65,13 +66,13 @@ function stageIndex(task: GeoTask, serviceMode: ServiceMode): number {
     site_submit: 4,
     site_submitted: 4,
     site_running: 4,
-    site_returned: 5,
-    site_verifying: 5,
-    site_failed: 5,
+    site_returned: 4,
+    site_verifying: 4,
+    site_failed: 4,
     site_publish: 5,
-    publish: 5,
-    recheck: 5,
-    done: 5,
+    publish: 6,
+    recheck: 6,
+    done: 6,
   }
   return indices[progress] ?? 0
 }
@@ -86,11 +87,11 @@ export function taskFlowFor(task: GeoTask, serviceMode: ServiceMode = 'managed')
       ? [['确认修复方案', '客户'], ['官网执行与验证', 'Agent'], ['执行结果', '系统']]
       : task.type === 'external'
         ? [['Task Brief 确认', '客户'], ['内容生成与质检', 'Agent'], ['内容审核改写', '客户 + Agent'], ['内容交付', '系统']]
-        : [['Task Brief 确认', '客户'], ['内容生成与质检', 'Agent'], ['内容审核改写', '客户 + Agent'], ['官网执行与验证', 'Agent'], ['执行结果', '系统']]
+        : [['Task Brief 确认', '客户'], ['内容生成与质检', 'Agent'], ['内容审核改写', '客户 + Agent'], ['官网执行与检测', 'Agent'], ['预览链接与发布确认', '客户'], ['发布结果', '系统']]
     const p = task.progress
     current = task.type === 'repair'
       ? ['human', 'brief'].includes(p) ? 0 : ['done', 'site_returned'].includes(p) ? 2 : 1
-      : p === 'brief' ? 0 : ['todo', 'running'].includes(p) ? 1 : ['human', 'client_review', 'client_content_review'].includes(p) ? 2 : p === 'done' ? definitions.length - 1 : 3
+      : p === 'brief' ? 0 : ['todo', 'running'].includes(p) ? 1 : ['human', 'client_review', 'client_content_review'].includes(p) ? 2 : ['site_submit', 'site_submitted', 'site_running', 'site_verifying', 'site_failed'].includes(p) ? 3 : p === 'site_publish' ? 4 : ['publish', 'recheck', 'done'].includes(p) ? definitions.length - 1 : 3
   }
 
   return definitions.map(([title, detail], index) => ({
@@ -99,4 +100,3 @@ export function taskFlowFor(task: GeoTask, serviceMode: ServiceMode = 'managed')
     state: index < current ? 'done' : index === current ? 'current' : 'upcoming',
   }))
 }
-

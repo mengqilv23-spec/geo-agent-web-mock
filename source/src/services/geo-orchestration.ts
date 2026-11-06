@@ -15,21 +15,19 @@ export function taskForStrategy(tasks: GeoTask[], strategy: Strategy) {
 
 /** 同一策略只编排一次；相同执行目标可复用，已完成交付不被覆盖。 */
 export function orchestrateStrategy(tasks: GeoTask[], strategy: Strategy): GeoTask {
+  strategy.origin ??= 'buyer-coverage'
+  const coverageGapRefs = strategy.coverageGapRefs ?? []
   const existing = taskForStrategy(tasks, strategy)
   if (existing) {
     strategy.confirmed = true
     return existing
   }
   const type = strategy.layer === '外部信源' ? 'external' : 'web'
-  const deliveryStrategies = new Set(['GS6', 'GS10', 'GS11'])
-  const target = deliveryStrategies.has(strategy.id) ? 'delivery-page' : `${type}:${strategy.layer}:${strategy.factor}`
   const destination = type === 'external' ? '外部内容交付' : strategy.layer === '内容' ? '官网内容' : 'AI 建站协同'
   const candidate = tasks.find((task) => {
+    if (task.origin !== 'buyer-coverage' || !coverageGapRefs.length) return false
     if (task.sourceKind === 'geo-audit-content') return false
-    const strategyIds = [task.strategy, ...task.relatedStrategies]
-    const sameDeliveryPage = target === 'delivery-page' && strategyIds.some(id => deliveryStrategies.has(id))
-    const sameStrategyTarget = target !== 'delivery-page' && task.factor === strategy.factor && task.type === type
-    return task.progress === 'brief' && task.strategyWindow === currentPeriod && (sameDeliveryPage || sameStrategyTarget)
+    return task.progress === 'brief' && task.strategyWindow === currentPeriod && task.type === type && (task.coverageGapRefs ?? []).some(ref => coverageGapRefs.includes(ref))
   })
   if (candidate) {
     if (!candidate.relatedStrategies.includes(strategy.id))
@@ -37,14 +35,18 @@ export function orchestrateStrategy(tasks: GeoTask[], strategy: Strategy): GeoTa
     candidate.source = [...new Set([...candidate.source.split(' / '), strategy.source])].join(' / ')
     candidate.persona = [...new Set([...candidate.persona.split('、'), ...strategy.persona.split('、')])].join('、')
     candidate.methods = [...new Set([...candidate.methods, ...strategy.methods])]
+    candidate.coverageGapRefs = [...new Set([...(candidate.coverageGapRefs ?? []), ...coverageGapRefs])]
     strategy.confirmed = true
     return candidate
   }
   const task: GeoTask = {
     id: nextTaskId(tasks),
     name: strategy.title,
+    origin: strategy.origin,
+    priority: strategy.priority,
     type,
     source: strategy.source,
+    coverageGapRefs,
     strategy: strategy.id,
     persona: strategy.persona,
     factor: strategy.factor,
@@ -68,6 +70,8 @@ export function createRepairTask(tasks: GeoTask[], finding: AuditFinding): GeoTa
   const task: GeoTask = {
     id: nextTaskId(tasks),
     name: finding.title,
+    origin: 'geo-audit',
+    priority: finding.priority,
     type: 'repair',
     source: finding.id,
     strategy: '',
@@ -81,7 +85,7 @@ export function createRepairTask(tasks: GeoTask[], finding: AuditFinding): GeoTa
     strategyWindow: currentPeriod,
   }
   tasks.push(task)
-  finding.status = '待官网运营审核'
+  finding.status = '待专家审核'
   finding.checked = false
   return task
 }
@@ -97,6 +101,7 @@ export function generateFindingStrategy(items: Strategy[], finding: AuditFinding
   }
   const strategy: Strategy = {
     id: `GS${Math.max(14, ...items.map(item => Number(item.id.replace(/\D/g, '')) || 0)) + 1}`,
+    origin: 'geo-audit',
     title: finding.title,
     description: finding.detail,
     evidence: `${finding.id} · ${finding.detail}`,

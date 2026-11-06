@@ -3,7 +3,7 @@ import type { GeoTask, Strategy, TaskFilter, UserRole, ServiceMode } from '../..
 import type { DataListColumn } from '../../ui/ce/data-list/types'
 import { computed, shallowRef, watch } from 'vue'
 import { displayObjectCodes } from '../../../data/geo-data'
-import { getTaskBucket, isTaskIgnored, reviewOwner, taskStageLabel } from '../../../workflows/task-workflow'
+import { isTaskIgnored, reviewOwner } from '../../../workflows/task-workflow'
 import { isDirectRepairTask } from '../../../workflows/direct-repair'
 import Button from '../../ui/ce/button/Button.vue'
 import ActionCard from '../../ui/ce/card/ActionCard.vue'
@@ -17,12 +17,12 @@ import '../../../styles/optimization-page.css'
 const props = defineProps<{ tasks: GeoTask[], allTasks: GeoTask[], strategies?: Strategy[], filter: TaskFilter, role: UserRole, serviceMode?: ServiceMode }>()
 const emit = defineEmits<{ setFilter: [filter: TaskFilter], openTask: [task: GeoTask], openFlow: [] }>()
 
-type BucketFilter = 'all' | 'brief' | 'brief_changes' | 'executing' | 'review' | 'website' | 'done' | 'ignored'
+type BucketFilter = 'all' | 'brief' | 'content' | 'review' | 'website' | 'changes' | 'publish' | 'done'
 const taskTypes: Array<{ id: TaskFilter, label: string }> = [
   { id: 'all', label: '全部任务' },
   { id: 'web', label: '官网内容' },
   { id: 'external', label: '外部内容' },
-  { id: 'repair', label: '基础修复' },
+  { id: 'repair', label: '官网结构与技术' },
 ]
 const bucket = shallowRef<BucketFilter>('all')
 const page = shallowRef(1)
@@ -32,12 +32,12 @@ const taskTypeOptions = taskTypes.map(item => ({ value: item.id, label: item.lab
 const taskStatusOptions: Array<{ value: BucketFilter, label: string }> = [
   { value: 'all', label: '全部状态' },
   { value: 'brief', label: '待确认 Brief' },
-  { value: 'brief_changes', label: 'Brief 待调整' },
-  { value: 'executing', label: '执行中' },
-  { value: 'review', label: '待结果审核' },
-  { value: 'website', label: '官网协同中' },
-  { value: 'done', label: '已完成' },
-  { value: 'ignored', label: '已忽略' },
+  { value: 'content', label: '内容处理中' },
+  { value: 'review', label: '待内容确认' },
+  { value: 'website', label: '官网处理中' },
+  { value: 'changes', label: '待修改' },
+  { value: 'publish', label: '待发布确认' },
+  { value: 'done', label: '已完结' },
 ]
 const taskColumns: DataListColumn<unknown>[] = [
   { key: 'serial', title: '序号', width: '4%', minWidth: 44 },
@@ -57,7 +57,20 @@ const taskTableLabels = {
   retry: '重试',
   selectRow: (label: string) => `选择任务 ${label}`,
 }
-const filteredTasks = computed(() => props.allTasks.filter(task => (props.filter === 'all' || task.type === props.filter) && (bucket.value === 'all' || getTaskBucket(task) === bucket.value) && (!onlyMine.value || needsMyAction(task))))
+function keyStatus(task: GeoTask): Exclude<BucketFilter, 'all'> {
+  if (isTaskIgnored(task) || ['recheck', 'done'].includes(task.progress)) return 'done'
+  if (task.progress === 'brief') return 'brief'
+  if (task.type === 'repair') return 'website'
+  if (['todo', 'running'].includes(task.progress)) return 'content'
+  if (['client_content_review', 'human', 'client_review'].includes(task.progress)) return 'review'
+  if (task.progress === 'site_failed') return 'changes'
+  if (['site_publish', 'publish'].includes(task.progress)) return 'publish'
+  return 'website'
+}
+function keyStatusLabel(task: GeoTask) {
+  return taskStatusOptions.find(item => item.value === keyStatus(task))?.label ?? '官网处理中'
+}
+const filteredTasks = computed(() => props.allTasks.filter(task => (props.filter === 'all' || task.type === props.filter) && (bucket.value === 'all' || keyStatus(task) === bucket.value) && (!onlyMine.value || needsMyAction(task))))
 const pages = computed(() => Math.max(1, Math.ceil(filteredTasks.value.length / perPage)))
 const visibleTasks = computed(() => filteredTasks.value.slice((page.value - 1) * perPage, page.value * perPage))
 function taskFromRow(item: unknown) {
@@ -82,10 +95,11 @@ function needsMyAction(task: GeoTask) {
 const myTasks = computed(() => props.allTasks.filter(needsMyAction))
 const cards = computed(() => [
   { title: '确认 Brief', bucket: 'brief' as BucketFilter },
-  { title: '调整 Brief', bucket: 'brief_changes' as BucketFilter },
   { title: '审核内容', bucket: 'review' as BucketFilter },
   { title: '处理官网执行', bucket: 'website' as BucketFilter },
-].map(card => ({ ...card, tasks: myTasks.value.filter(task => getTaskBucket(task) === card.bucket) }))
+  { title: '处理修改', bucket: 'changes' as BucketFilter },
+  { title: '确认发布', bucket: 'publish' as BucketFilter },
+].map(card => ({ ...card, tasks: myTasks.value.filter(task => keyStatus(task) === card.bucket) }))
   .map(card => ({ ...card, count: card.tasks.length })).filter(card => card.count > 0))
 const overviewStats = computed(() => taskTypes.map(type => ({
   name: type.label,
@@ -107,9 +121,14 @@ function openCard(taskCard: typeof cards.value[number]) {
   else document.getElementById('geo-task-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 function taskTypeLabel(task: GeoTask) {
-  return task.type === 'web' ? '官网内容' : task.type === 'external' ? '外部内容' : '技术修复'
+  return task.type === 'web' ? '官网内容' : task.type === 'external' ? '外部内容' : '官网结构与技术'
 }
 function sourceLabel(task: GeoTask) {
+  if (task.origin === 'buyer-coverage') {
+    const count = task.coverageGapRefs?.length ?? 0
+    return count ? `买家关注点与品牌表现 · ${count} 项差距` : '买家关注点与品牌表现'
+  }
+  if (task.origin === 'geo-audit') return `官网 GEO 体检 · ${task.source}`
   if (task.sourceKind === 'geo-audit-content') return `官网体检 · ${displayObjectCodes(task.source)}`
   const source = task.source.split(/[·/]/)[0]?.trim() || task.source
   return displayObjectCodes(source)
@@ -211,7 +230,7 @@ function setTaskStatus(value: string) {
             {{ sourceLabel(taskFromRow(item)) }}
           </template>
           <template #cell-status="{ item }">
-            <span class="geo-progress" :class="`geo-progress--${taskFromRow(item).progress}`">{{ taskStageLabel(taskFromRow(item), serviceMode) }}</span>
+            <span class="geo-progress" :class="`geo-progress--${taskFromRow(item).progress}`">{{ keyStatusLabel(taskFromRow(item)) }}</span>
           </template>
           <template #cell-actions="{ item }">
             <Button class="geo-task-detail-button geo-table-detail-button" size="sm" :data-guide-brief-task="taskFromRow(item).progress === 'brief' && taskFromRow(item).type !== 'repair' ? 'true' : undefined" @click="emit('openTask', taskFromRow(item))">

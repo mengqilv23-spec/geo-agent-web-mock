@@ -6,6 +6,8 @@ export type ServiceMode = 'managed' | 'agent'
 export type UserRole = 'ops' | 'client'
 export type StrategyLayer = '全部' | '内容' | '外部信源'
 export type TaskFilter = 'all' | 'web' | 'external' | 'repair'
+export type FindingTreatment = 'website-tech-direct' | 'website-tech-advice' | 'website-content-review' | 'website-content-advice' | 'website-content-knowledge'
+export type DataOrigin = 'geo-audit' | 'buyer-coverage' | 'standalone'
 export type TaskProgress = 'brief' | 'todo' | 'running' | 'client_content_review' | 'human' | 'client_review' | 'publish' | 'site_submit' | 'site_submitted' | 'site_running' | 'site_returned' | 'site_verifying' | 'site_publish' | 'site_failed' | 'recheck' | 'done'
 
 export interface BaselineMetric {
@@ -40,11 +42,12 @@ export interface AuditFinding {
   check: string
   method: string
   priority: Priority
-  status: '待处理' | '待客户审核' | '已生成策略' | '待官网运营审核' | '暂不修复' | '已修复' | '无需处理' | '待补充知识'
+  status: '待处理' | '待客户审核' | '已生成策略' | '待官网运营审核' | '待专家审核' | '暂不修复' | '已修复' | '无需处理' | '待补充知识'
   feedback?: string
   decisionReason?: string
   checked: boolean
   route: 'repair' | 'strategy' | 'advice' | 'knowledge'
+  treatment?: FindingTreatment
   category?: '官网结构' | '官网内容'
   knowledgeTopic?: string
   advice?: string
@@ -78,6 +81,7 @@ export interface Strategy {
   businessGapRecorded?: boolean
   gapFacts?: { verified: boolean, capability: boolean | null, contentExists: boolean, clear: boolean, readable: boolean, thirdParty: boolean }
   id: string
+  origin?: DataOrigin
   title: string
   layer: Exclude<StrategyLayer, '全部'>
   priority: Priority
@@ -91,19 +95,24 @@ export interface Strategy {
   reviewStage?: 'customer'
   personaIds?: string[]
   gapNames?: string[]
+  coverageGapRefs?: string[]
   ignored?: boolean
   reviewNote?: string
 }
 
 export interface GeoTask {
+  priority?: Priority
   sourceKind?: 'geo-audit-content'
   executionKind?: 'verification'
+  completionOutcome?: 'expired-unexecuted'
   verificationOutcome?: 'add-content' | 'edit-content' | 'technical' | 'external' | 'business-gap'
   verificationFollowupId?: string
   id: string
+  origin?: DataOrigin
   name: string
   type: Exclude<TaskFilter, 'all'>
   source: string
+  coverageGapRefs?: string[]
   strategy: string
   persona: string
   factor: string
@@ -111,7 +120,7 @@ export interface GeoTask {
   destination: string
   progress: TaskProgress
   evidence?: string
-  auditContent?: { abnormality: string, originalContent: string }
+  auditContent?: { abnormality: string, originalContent: string, modificationScope?: string }
   workflow?: TaskWorkflow
   relatedStrategies: string[]
   baselineVersion?: string
@@ -119,22 +128,22 @@ export interface GeoTask {
 }
 
 export const supplementalBriefFindings: AuditFinding[] = [
-  { id: 'FC-01', title: '碳纤维切割能力页缺少适用条件', detail: '能力页列出了切割厚度，但没有说明材料类型、设备配置和测试条件，现有产品规格资料可用于核对。', check: '品牌实体', method: '官网内容核对与改写', priority: 'P1', status: '待处理', checked: false, route: 'strategy', category: '官网内容', evidence: '演示核对：官网能力页只给出单一厚度数值；产品规格资料按材料与配置区分适用范围。', routeReason: '确认对应规格后，在 Brief 中明确页面、材料范围和可公开的条件，再补充正文说明。' },
-  { id: 'FC-02', title: '德国本地服务页缺少服务边界', detail: '官网介绍了德国本地服务，但没有区分远程支持、现场响应和培训范围；已有服务资料记录了各项适用条件。', check: '跨平台一致性', method: '官网内容核对与改写', priority: 'P1', status: '待处理', checked: false, route: 'strategy', category: '官网内容', evidence: '演示核对：服务页使用统一的“本地支持”表述，服务资料分别列有支持方式和覆盖地区。', routeReason: '在 Brief 中确认服务地区、响应方式与可公开承诺，再改写服务页和相关问答。' },
-  { id: 'FC-03', title: '航空采购页面缺少交期口径说明', detail: '采购页面展示标准交期，但没有说明定制配置与验收安排可能影响交付时间；已有交付资料可核对。', check: '跨平台一致性', method: '官网内容核对与改写', priority: 'P2', status: '待处理', checked: false, route: 'strategy', category: '官网内容', evidence: '演示核对：页面使用单一交期表述，交付资料区分标准机型、定制项目及验收节点。', routeReason: '在 Brief 中确认不同项目的交期范围和审批口径，再补充采购页面的适用条件。' },
-  { id: 'FC-04', title: '产品对比页未写明比较依据', detail: '产品对比页列出效率和精度优势，但没有标明测试材料、样本条件与数据出处；现有试切记录可核对。', check: '品牌实体', method: '官网内容核对与改写', priority: 'P2', status: '待处理', checked: false, route: 'strategy', category: '官网内容', evidence: '演示核对：对比结论缺少对应的测试条件，试切记录包含材料、设备参数和测量方法。', routeReason: '在 Brief 中选择可公开的测试记录，明确比较对象和适用场景后补充证据说明。' },
+  { id: 'FC-01', title: '碳纤维切割能力页缺少适用条件', detail: '能力页列出了切割厚度，但没有说明材料类型、设备配置和测试条件，现有产品规格资料可用于核对。', check: '品牌实体', method: '官网内容核对与改写', priority: 'P1', status: '待处理', checked: false, route: 'strategy', treatment: 'website-content-review', category: '官网内容', evidence: '演示核对：官网能力页只给出单一厚度数值；产品规格资料按材料与配置区分适用范围。', routeReason: '确认对应规格后，在 Brief 中明确页面、材料范围和可公开的条件，再补充正文说明。' },
+  { id: 'FC-02', title: '德国本地服务页缺少服务边界', detail: '官网介绍了德国本地服务，但没有区分远程支持、现场响应和培训范围；已有服务资料记录了各项适用条件。', check: '跨平台一致性', method: '官网内容核对与改写', priority: 'P1', status: '待处理', checked: false, route: 'strategy', treatment: 'website-content-review', category: '官网内容', evidence: '演示核对：服务页使用统一的“本地支持”表述，服务资料分别列有支持方式和覆盖地区。', routeReason: '在 Brief 中确认服务地区、响应方式与可公开承诺，再改写服务页和相关问答。' },
+  { id: 'FC-03', title: '航空采购页面缺少交期口径说明', detail: '采购页面展示标准交期，但没有说明定制配置与验收安排可能影响交付时间；已有交付资料可核对。', check: '跨平台一致性', method: '官网内容核对与改写', priority: 'P2', status: '待处理', checked: false, route: 'strategy', treatment: 'website-content-review', category: '官网内容', evidence: '演示核对：页面使用单一交期表述，交付资料区分标准机型、定制项目及验收节点。', routeReason: '在 Brief 中确认不同项目的交期范围和审批口径，再补充采购页面的适用条件。' },
+  { id: 'FC-04', title: '产品对比页未写明比较依据', detail: '产品对比页列出效率和精度优势，但没有标明测试材料、样本条件与数据出处；现有试切记录可核对。', check: '品牌实体', method: '官网内容核对与改写', priority: 'P2', status: '待处理', checked: false, route: 'strategy', treatment: 'website-content-review', category: '官网内容', evidence: '演示核对：对比结论缺少对应的测试条件，试切记录包含材料、设备参数和测量方法。', routeReason: '在 Brief 中选择可公开的测试记录，明确比较对象和适用场景后补充证据说明。' },
 ]
 
 export const auditFindings: AuditFinding[] = [
-  { id: 'F7-1', title: 'Product Schema 缺失', detail: '碳纤维方案页缺少 Product 结构化数据。', check: '结构化数据', method: '官网修复', priority: 'P0', status: '待处理', checked: false, route: 'repair', routeReason: '缺失项明确，可按标准规则直接修复和验证。' },
-  { id: 'F7-2', title: 'FAQ Schema 缺失', detail: '采购问答区已有内容，但未形成 FAQ 结构化数据。', check: '结构化数据', method: '官网修复', priority: 'P0', status: '待处理', checked: false, route: 'repair', routeReason: '已有 FAQ 内容，只需补齐机器可读标记。' },
-  { id: 'F8-1', title: '认证编号未结构化', detail: '认证信息可见，但证书编号与适用范围未形成机器可读实体信息。', check: '品牌实体', method: '实体修复', priority: 'P1', status: '待处理', checked: false, route: 'repair', routeReason: '认证事实已存在，本次只补机器可读字段。' },
-  { id: 'F8-2', title: '专家作者档案待补', detail: '2 位工程师已有内容贡献，但缺少可验证的专业背景、经验与作者介绍。', check: '品牌实体', method: '实体修复', priority: 'P1', status: '待处理', checked: false, route: 'strategy', evidence: '当前作者页仅显示两位工程师的姓名与内容贡献，缺少可核验的专业背景、从业经验及其与相关技术主题的关联，读者和 AI 难以判断作者资质与内容可信度。', advice: '核实并取得本人确认后，围绕工程师负责的技术领域、相关经验和代表性内容补充作者介绍，并将作者档案关联到对应文章；不要加入未经核实的资历或认证信息。', routeReason: '需要确认专家范围、身份事实和对外介绍方式。' },
-  { id: 'F8-3', title: 'Organization sameAs 不完整', detail: 'Organization 已部署，但品牌官方外部实体关联仍不完整。', check: '品牌实体', method: '实体修复', priority: 'P1', status: '待处理', checked: false, route: 'repair', routeReason: '官方实体来源明确，可补齐 sameAs 关联。' },
-  { id: 'F9', title: '跨平台地址口径不一致', detail: '官网 / LinkedIn / 行业名录存在 1 处地址字段口径冲突。', check: '跨平台一致性', method: '外部信源', priority: 'P1', status: '待处理', checked: false, route: 'repair', routeReason: '地址字段有冲突，先确认哪一个地址正确，再交 AI 建站修改并复核。' },
-  { id: 'F7-3', title: '产品页分组导航建议', detail: '长产品页当前可正常读取，可在后续常规改版时评估增加分组锚点导航。', check: '结构化数据', method: '仅提供建议', priority: 'P3', status: '无需处理', checked: false, route: 'advice', category: '官网结构', evidence: '演示检查记录：主要产品内容可读取，当前未发现由分组导航缺失造成的抓取或信息抽取阻断。', advice: '后续常规改版时，可评估为规格、应用和问答区域增加锚点导航；本轮无需修改官网结构。', routeReason: '属于可选的浏览体验建议，本轮无需修复，不进入审核或执行流程。' },
-  { id: 'F8-4', title: '案例页摘要表达建议', detail: '案例页已有材料、工艺与应用说明，可在下次内容维护时评估补充简短摘要。', check: '信任信号', method: '仅提供建议', priority: 'P3', status: '无需处理', checked: false, route: 'advice', category: '官网内容', evidence: '演示检查记录：现有案例包含材料、工艺和应用背景，未发现必须在本轮补齐的事实缺失。', advice: '下次更新案例时，可考虑在正文前加入材料、加工需求和适用场景摘要；本轮无需改写或重新生成内容。', routeReason: '现有内容已具备基本信息，摘要属于可选表达建议，仅供后续维护参考。' },
-  { id: 'F8-5', title: '产品技术参数缺少核对依据', detail: '官网已展示产品技术参数，但知识库缺少对应的标准化资料，暂时无法核对型号、参数与适用范围。', check: '品牌实体', method: '补充知识提醒', priority: 'P2', status: '待补充知识', checked: false, route: 'knowledge', category: '官网内容', knowledgeTopic: '产品技术参数', evidence: '演示检查记录：知识库未提供包含产品型号、技术参数和适用范围的结构化资料。当前无法据此判定官网参数是否准确。', advice: '请补充「产品技术参数」相关知识库内容。补充后，系统将在下一次监测时重新核对官网中的对应信息。', routeReason: '因缺少标准化核对依据，当前仅提醒补充知识，不判定为内容错误，也不触发内容改写或官网修复。' },
+  { id: 'F7-1', title: 'Product Schema 缺失', detail: '碳纤维方案页缺少 Product 结构化数据。', check: '结构化数据', method: '官网修复', priority: 'P0', status: '待处理', checked: false, route: 'repair', treatment: 'website-tech-direct', routeReason: '缺失项明确，可按标准规则直接修复和验证。' },
+  { id: 'F7-2', title: 'FAQ Schema 缺失', detail: '采购问答区已有内容，但未形成 FAQ 结构化数据。', check: '结构化数据', method: '官网修复', priority: 'P0', status: '待处理', checked: false, route: 'repair', treatment: 'website-tech-direct', routeReason: '已有 FAQ 内容，只需补齐机器可读标记。' },
+  { id: 'F8-1', title: '认证编号未结构化', detail: '认证信息可见，但证书编号与适用范围未形成机器可读实体信息。', check: '品牌实体', method: '实体修复', priority: 'P1', status: '待处理', checked: false, route: 'repair', treatment: 'website-tech-direct', routeReason: '认证事实已存在，本次只补机器可读字段。' },
+  { id: 'F8-2', title: '专家作者档案待补', detail: '2 位工程师已有内容贡献，但缺少可验证的专业背景、经验与作者介绍。', check: '品牌实体', method: '实体修复', priority: 'P1', status: '待处理', checked: false, route: 'strategy', treatment: 'website-content-review', evidence: '当前作者页仅显示两位工程师的姓名与内容贡献，缺少可核验的专业背景、从业经验及其与相关技术主题的关联，读者和 AI 难以判断作者资质与内容可信度。', advice: '核实并取得本人确认后，围绕工程师负责的技术领域、相关经验和代表性内容补充作者介绍，并将作者档案关联到对应文章；不要加入未经核实的资历或认证信息。', routeReason: '需要确认专家范围、身份事实和对外介绍方式。' },
+  { id: 'F8-3', title: 'Organization sameAs 不完整', detail: 'Organization 已部署，但品牌官方外部实体关联仍不完整。', check: '品牌实体', method: '实体修复', priority: 'P1', status: '待处理', checked: false, route: 'repair', treatment: 'website-tech-direct', routeReason: '官方实体来源明确，可补齐 sameAs 关联。' },
+  { id: 'F9', title: '跨平台地址口径不一致', detail: '官网 / LinkedIn / 行业名录存在 1 处地址字段口径冲突。', check: '跨平台一致性', method: '官网内容核对与改写', priority: 'P1', status: '待处理', checked: false, route: 'strategy', treatment: 'website-content-review', category: '官网内容', evidence: '官网 / LinkedIn / 行业名录存在 1 处地址字段口径冲突，需先确认权威地址来源。', advice: '地址字段存在冲突，先确认哪个地址正确，再修改官网内容并复核；外部平台另行核查。', routeReason: '先确认正确地址，再修改官网内容并复核；外部平台信息另行核查。' },
+  { id: 'F7-3', title: '产品页分组导航建议', detail: '长产品页当前可正常读取，可在后续常规改版时评估增加分组锚点导航。', check: '结构化数据', method: '仅提供建议', priority: 'P3', status: '无需处理', checked: false, route: 'advice', treatment: 'website-tech-advice', category: '官网结构', evidence: '演示检查记录：主要产品内容可读取，当前未发现由分组导航缺失造成的抓取或信息抽取阻断。', advice: '后续常规改版时，可评估为规格、应用和问答区域增加锚点导航；本轮无需修改官网结构。', routeReason: '属于可选的浏览体验建议，本轮无需修复，不进入审核或执行流程。' },
+  { id: 'F8-4', title: '案例页摘要表达建议', detail: '案例页已有材料、工艺与应用说明，可在下次内容维护时评估补充简短摘要。', check: '信任信号', method: '仅提供建议', priority: 'P3', status: '无需处理', checked: false, route: 'advice', treatment: 'website-content-advice', category: '官网内容', evidence: '演示检查记录：现有案例包含材料、工艺和应用背景，未发现必须在本轮补齐的事实缺失。', advice: '下次更新案例时，可考虑在正文前加入材料、加工需求和适用场景摘要；本轮无需改写或重新生成内容。', routeReason: '现有内容已具备基本信息，摘要属于可选表达建议，仅供后续维护参考。' },
+  { id: 'F8-5', title: '产品技术参数缺少核对依据', detail: '官网已展示产品技术参数，但知识库缺少对应的标准化资料，暂时无法核对型号、参数与适用范围。', check: '品牌实体', method: '补充知识提醒', priority: 'P2', status: '待补充知识', checked: false, route: 'knowledge', treatment: 'website-content-knowledge', category: '官网内容', knowledgeTopic: '产品技术参数', evidence: '演示检查记录：知识库未提供包含产品型号、技术参数和适用范围的结构化资料。当前无法据此判定官网参数是否准确。', advice: '请补充「产品技术参数」相关知识库内容。补充后，系统将在下一次监测时重新核对官网中的对应信息。', routeReason: '因缺少标准化核对依据，当前仅提醒补充知识，不判定为内容错误，也不触发内容改写或官网修复。' },
   ...supplementalBriefFindings,
 ]
 
@@ -149,9 +158,15 @@ export const clientContentReviewFindings: AuditFinding[] = [
 
 export function officialContentSnapshot(finding: AuditFinding): GeoTask['auditContent'] | undefined {
   if (finding.category !== '官网内容' || finding.route !== 'strategy') return undefined
+  if (finding.id === 'F9') return {
+    abnormality: '官网有关企业地址的文字描述与已确认的企业资料不一致，可能使 AI 难以准确识别企业所在地并关联品牌信息；目前未定位到具体页面。',
+    originalContent: '',
+    modificationScope: '官网：核对并更新企业地址相关文字描述，结合已确认的品牌名称、地址与联系信息，形成口径一致的企业介绍内容；外部信源另行核查。',
+  }
   return {
-    abnormality: Array.from(finding.detail).slice(0, 100).join(''),
+    abnormality: `${Array.from(finding.detail).slice(0, 100).join('')}这可能影响 AI 准确识别相关品牌信息。`,
     originalContent: Array.from(finding.originalContent ?? '').slice(0, 500).join(''),
+    modificationScope: `官网：围绕「${finding.title}」，结合已确认的品牌资料与「${finding.check}」检查结果，更新相关页面的文字内容。`,
   }
 }
 
@@ -189,10 +204,10 @@ export const personas: Persona[] = [
   { id: 'quality', name: '质量管理负责人', shortName: '质量管理', focus: '德国 / 英语', gaps: [], factors: [{ name: '切割精度', coverage: 82, competitor: 82 }, { name: '认证与合规', coverage: 82, competitor: 82 }, { name: '交付稳定性', coverage: 74, competitor: 74 }, { name: '售后响应', coverage: 77, competitor: 77 }, { name: '价格与 TCO', coverage: 62, competitor: 62 }, { name: '操作效率', coverage: 78, competitor: 78 }] },
 ]
 
-export const strategies: Strategy[] = [
+export const strategies: Strategy[] = ([
   { id: 'GS1', title: '碳纤维方案页品牌显影：对比表 + FAQ + 品牌事实补充', layer: '内容', priority: 'P0', description: '在碳纤维方案页补充可引用的对比表、FAQ 与品牌实体信息，让 AI 在引用页面时准确识别品牌。', evidence: '页面被 Perplexity 引为来源，但回答只推荐 Flow', source: 'F1', persona: '复材技术负责人、复材初创', factor: '无热影响区 / 品牌显影', methods: ['对比表 / 定义框 / Q&A', '统计数据注入', '品牌与产品事实补充'], personaIds: ['engineering'], gapNames: ['认证与合规', '维护难度'], confirmed: false },
   { id: 'GS8', title: 'CompositesWorld 投稿《碳纤维切割工艺对比》', layer: '外部信源', priority: 'P1', description: '准备行业媒体长稿，使用统计数据与专家引语补充高价值第三方信源。', evidence: '82.9% 引用来自第三方；CompositesWorld 高频且我方零提及', source: 'F5', persona: '复材技术负责人、复材初创', factor: '无热影响区 / 第三方信任', methods: ['行业媒体长稿', '统计数据注入', '专家引语'], personaIds: ['engineering'], gapNames: [], confirmed: false },
-  { id: 'GS9', title: 'LinkedIn工程师专栏 + r/Machinists回答草稿', layer: '外部信源', priority: 'P1', description: '围绕真实选型问题准备工程师专栏与社区回答草稿，补充可验证的专业观点。', evidence: 'Perplexity 中 Reddit / r/Machinists 高频出现', source: 'F5', persona: '复材技术负责人', factor: '价格与TCO', methods: ['社区真实讨论', '专家引语', '选型问答'], personaIds: ['engineering'], gapNames: [], confirmed: false },
+  { id: 'GS9', title: 'LinkedIn工程师专栏 + r/Machinists回答草稿', layer: '外部信源', priority: 'P1', description: '围绕真实选型问题准备工程师专栏与社区回答草稿，补充可验证的专业观点。', evidence: 'Perplexity 中 Reddit / r/Machinists 高频出现', source: 'F5', persona: '复材技术负责人', factor: '价格与 TCO', methods: ['社区真实讨论', '专家引语', '选型问答'], personaIds: ['engineering'], gapNames: ['价格与 TCO'], confirmed: false },
   { id: 'GS6', title: '交期与产能页：标准交期区间 + 德国服务网络 SLA', layer: '内容', priority: 'P0', description: '以胶囊答案、产能数据和服务范围说明补齐交付稳定性证据，所有业务承诺由客户在 Brief 中确认。', evidence: '人设重视 100 · 我方 35 · 竞对 70；负面叙事被 2 个引擎复述', source: 'F3', persona: '汽车Tier-1、航空采购', factor: '交期与产能', methods: ['40–60字胶囊答案', '统计数据注入', '权威语态', '对比表 / Q&A'], personaIds: ['procurement'], gapNames: ['本地服务与培训', '交期与产能', '交付稳定性', '供应链风险', '本地服务', '代理支持', '交期稳定'], confirmed: false },
   { id: 'GS7', title: '切割精度事实纠错：统一±0.05mm并结构化参数', layer: '内容', priority: 'P0', description: '对齐已确认的产品事实库，统一精度参数并形成可直接引用的结构化信息。', evidence: 'ChatGPT 错写 ±0.1mm', source: 'F4', persona: '航空采购', factor: '事实准确性', methods: ['事实纠错', '参数结构化', '事实库对齐'], personaIds: ['procurement'], gapNames: [], confirmed: false },
   { id: 'GS4', title: 'JP市场日语内容补齐：日语问答与采购决策内容', layer: '内容', priority: 'P0', description: '补齐日本市场采购问答、本地服务与代理支持内容，覆盖当前未命中的日语问题。', evidence: 'JP 市场 6 条日语提问全线未命中', source: 'F2', persona: '日本商社', factor: '本地服务 / 代理支持', methods: ['日语本地化', 'Q&A', '市场内容覆盖'], personaIds: ['plant'], gapNames: ['本地服务与培训', '本地服务', '代理支持'], confirmed: false },
@@ -202,16 +217,31 @@ export const strategies: Strategy[] = [
   { id: 'GS11', title: '交期页增加汽车工艺停机风险与服务问答', layer: '内容', priority: 'P1', description: '补充停机风险、服务保障和车间场景问答，新增范围在后续 Brief 中确认。', evidence: '与现有交期任务目标页相同，但新增人设、决策因子和内容方法，需要专业判断执行范围。', source: 'F3 / F6', persona: '汽车工艺、车间主管', factor: '停机风险 / 服务', methods: ['停机风险 Q&A', '服务问答', '买家场景补充'], personaIds: ['distributor'], gapNames: ['本地服务与培训', '交期与产能', '交付稳定性', '供应链风险', '本地服务', '代理支持', '交期稳定', '停机风险'], confirmed: false },
   { id: 'GS12', title: '欧洲服务响应主题稿：补充服务承诺与适用范围', layer: '外部信源', priority: 'P0', description: '准备欧洲服务响应主题稿，明确服务承诺与市场边界，客户确认业务事实后作为最终内容交付。', evidence: 'Agent 发现可并入既有行业稿件，但会新增欧洲服务响应承诺与适用市场范围，属于业务事实和内容范围变化。', source: 'F3 / F5', persona: '航空采购、汽车工艺', factor: '售后响应 / 供应链风险', methods: ['服务范围说明', '业务事实核验', '适用市场边界'], personaIds: ['procurement'], gapNames: ['本地服务与培训', '供应链风险', '本地服务', '代理支持'], confirmed: false },
   { id: 'GS13', title: '日本代理合作与本地服务说明页', layer: '内容', priority: 'P1', description: '围绕日本商社的代理合作、本地支持和服务范围构建独立说明页。', evidence: '扫描后未找到目标市场、语言、页面和动作均匹配的已有任务，应保持独立执行。', source: 'F2', persona: '日本商社', factor: '代理支持 / 本地服务', methods: ['日语本地化', '代理合作说明', '服务范围 Q&A'], personaIds: ['plant'], gapNames: ['本地服务与培训', '本地服务', '代理支持'], confirmed: false },
-  { id: 'GS14', title: '工程师专家档案实体统一与同名消歧', layer: '内容', priority: 'P1', description: '补充可验证的工程师身份、专业背景和实体关联，统一作者档案并消除同名歧义。', evidence: '2 位工程师已有内容贡献，但缺少可验证作者 / 专家实体档案。', source: 'F7', persona: '不适用', factor: '实体可信度', methods: ['作者实体', '专家档案', 'sameAs消歧'], gapNames: ['认证与合规'], confirmed: false },
-]
+  { id: 'GS14', title: '工程师专家档案实体统一与同名消歧', layer: '内容', priority: 'P1', description: '补充可验证的工程师身份、专业背景和实体关联，统一作者档案并消除同名歧义。', evidence: '2 位工程师已有内容贡献，但缺少可验证作者 / 专家实体档案。', source: 'F8-2', origin: 'geo-audit', persona: '不适用', factor: '实体可信度', methods: ['作者实体', '专家档案', 'sameAs消歧'], gapNames: ['认证与合规'], confirmed: false },
+] as Strategy[]).map(strategy => ({ ...strategy, origin: strategy.id === 'GS14' ? 'geo-audit' as const : 'buyer-coverage' as const }))
 
 /** Five detail-flow examples transcribed from the current optimization-center prototype. */
 export const prototypeTasks: GeoTask[] = [
-  { id: 'T-2501', name: '工程师专家档案实体统一与同名消歧', type: 'repair', source: '7', strategy: 'GS14', persona: '不适用', factor: '实体可信度', evidence: '正在扫描是否可复用“认证结构化、专家档案与 sameAs”修复任务。', methods: ['作者实体', '专家档案', 'sameAs 消歧'], destination: '技术修复', progress: 'site_running', relatedStrategies: ['GS14'], baselineVersion: 'V2', strategyWindow: '09/14–09/20' },
-  { id: 'T-2502', name: '日本代理合作与本地服务说明页', type: 'web', source: '认知缺口策略 12', strategy: 'GS13', persona: '日本商社', factor: '代理支持 / 本地服务', methods: ['日语本地化', '代理合作说明', '服务范围 Q&A'], destination: '官网内容', progress: 'brief', relatedStrategies: ['GS13'], baselineVersion: 'V1', strategyWindow: '09/14–09/20' },
-  { id: 'T-2503', name: '欧洲服务响应主题稿：补充服务承诺与适用范围', type: 'external', source: '认知缺口策略 11', strategy: 'GS12', persona: '航空采购、汽车工艺', factor: '售后响应 / 供应链风险', methods: ['服务范围说明', '业务事实核验', '适用市场边界'], destination: '外部内容', progress: 'brief', relatedStrategies: ['GS12'], baselineVersion: 'V1', strategyWindow: '09/14–09/20' },
-  { id: 'T-2504', name: '交期页增加汽车工艺停机风险与服务问答', type: 'web', source: '认知缺口策略 10', strategy: 'GS11', persona: '汽车工艺、车间主管', factor: '停机风险 / 服务', methods: ['停机风险 Q&A', '服务问答', '买家场景补充'], destination: '官网内容', progress: 'brief', relatedStrategies: ['GS11'], baselineVersion: 'V1', strategyWindow: '09/14–09/20' },
-  { id: 'T-2505', name: '交期与产能页：补充航空采购 FAQ 与产能表', type: 'web', source: '认知缺口策略 9', strategy: 'GS10', persona: '航空采购', factor: '交付稳定性', methods: ['交期 FAQ', '产能表', '采购核对项'], destination: '官网内容', progress: 'brief', relatedStrategies: ['GS10'], baselineVersion: 'V1', strategyWindow: '09/14–09/20' },
+  { id: 'T-2501', name: '工程师专家档案实体统一与同名消歧', type: 'web', source: 'F8-2', origin: 'geo-audit', strategy: 'GS14', persona: '不适用', factor: '品牌实体', evidence: '当前作者页缺少经确认的工程师背景资料；需审核确认后补充作者档案。', methods: ['核验专家身份', '补充作者档案', '关联对应文章'], destination: '官网内容', progress: 'brief', relatedStrategies: ['GS14'], baselineVersion: 'V2', strategyWindow: '09/14–09/20' },
+  { id: 'T-2502', name: '日本代理合作与本地服务说明页', type: 'web', source: '认知缺口策略 12', origin: 'buyer-coverage', strategy: 'GS13', persona: '日本商社', factor: '代理支持 / 本地服务', methods: ['日语本地化', '代理合作说明', '服务范围 Q&A'], destination: '官网内容', progress: 'brief', relatedStrategies: ['GS13'], baselineVersion: 'V1', strategyWindow: '09/14–09/20' },
+  { id: 'T-2503', name: '欧洲服务响应主题稿：补充服务承诺与适用范围', type: 'external', source: '认知缺口策略 11', origin: 'buyer-coverage', strategy: 'GS12', persona: '航空采购、汽车工艺', factor: '售后响应 / 供应链风险', methods: ['服务范围说明', '业务事实核验', '适用市场边界'], destination: '外部内容', progress: 'brief', relatedStrategies: ['GS12'], baselineVersion: 'V1', strategyWindow: '09/14–09/20' },
+  { id: 'T-2504', name: '交期页增加汽车工艺停机风险与服务问答', type: 'web', source: '认知缺口策略 10', origin: 'buyer-coverage', strategy: 'GS11', persona: '汽车工艺、车间主管', factor: '停机风险 / 服务', methods: ['停机风险 Q&A', '服务问答', '买家场景补充'], destination: '官网内容', progress: 'brief', relatedStrategies: ['GS11'], baselineVersion: 'V1', strategyWindow: '09/14–09/20' },
+  { id: 'T-2505', name: '交期与产能页：补充航空采购 FAQ 与产能表', type: 'web', source: '认知缺口策略 9', origin: 'buyer-coverage', strategy: 'GS10', persona: '航空采购', factor: '交付稳定性', methods: ['交期 FAQ', '产能表', '采购核对项'], destination: '官网内容', progress: 'brief', relatedStrategies: ['GS10'], baselineVersion: 'V1', strategyWindow: '09/14–09/20' },
+]
+
+/** Optimization status examples. Each record is a separate, inspectable local task. */
+export const taskStatusExamples: GeoTask[] = [
+  { id: 'T-2601', name: '碳纤维切割能力页：参数适用范围说明', type: 'web', priority: 'P1', source: '演示任务', strategy: '', persona: '复材技术负责人', factor: '切割精度', methods: ['参数核对', '适用范围说明'], destination: '官网内容', progress: 'brief', relatedStrategies: [] },
+  { id: 'T-2602', name: '水刀设备选型页：材料与厚度对照', type: 'web', priority: 'P1', source: '演示任务', strategy: '', persona: '车间主管', factor: '设备选型', methods: ['材料对照表', '选型问答'], destination: '官网内容', progress: 'todo', relatedStrategies: [] },
+  { id: 'T-2603', name: '德国服务页：响应范围说明', type: 'web', priority: 'P2', source: '演示任务', strategy: '', persona: '航空采购', factor: '售后响应', methods: ['服务范围核对', '页面改写'], destination: '官网内容', progress: 'human', relatedStrategies: [] },
+  { id: 'T-2604', name: '产品规格页：认证信息补充', type: 'web', priority: 'P1', source: '演示任务', strategy: '', persona: '复材技术负责人', factor: '认证与合规', methods: ['证书核对', '官网内容更新'], destination: '官网内容', progress: 'site_failed', relatedStrategies: [] },
+  { id: 'T-2605', name: '航空采购 FAQ：交期口径更新', type: 'web', priority: 'P2', source: '演示任务', strategy: '', persona: '航空采购', factor: '交付稳定性', methods: ['交期 FAQ', '适用条件'], destination: '官网内容', progress: 'done', relatedStrategies: [] },
+  { id: 'T-2606', name: '官网案例页：未经确认的数据表述', type: 'web', priority: 'P3', source: '演示任务', strategy: '', persona: '复材技术负责人', factor: '案例证据', methods: ['案例事实核对'], destination: '官网内容', progress: 'brief', relatedStrategies: [] },
+  { id: 'T-2607', name: '行业媒体稿：德国本地服务边界', type: 'external', priority: 'P1', source: '演示任务', strategy: '', persona: '航空采购', factor: '本地服务', methods: ['服务事实核验', '稿件范围调整'], destination: '外部内容', progress: 'brief', relatedStrategies: [] },
+  { id: 'T-2608', name: '复材加工行业稿：无热影响区说明', type: 'external', priority: 'P2', source: '演示任务', strategy: '', persona: '复材技术负责人', factor: '无热影响区', methods: ['技术事实核对', '行业稿撰写'], destination: '外部内容', progress: 'todo', relatedStrategies: [] },
+  { id: 'T-2609', name: '欧洲渠道稿：售后响应说明', type: 'external', priority: 'P1', source: '演示任务', strategy: '', persona: '航空采购', factor: '售后响应', methods: ['服务范围核对', '稿件审核'], destination: '外部内容', progress: 'human', relatedStrategies: [] },
+  { id: 'T-2610', name: '日本合作伙伴稿：代理支持范围', type: 'external', priority: 'P2', source: '演示任务', strategy: '', persona: '日本商社', factor: '代理支持', methods: ['合作边界确认', '外部稿件交付'], destination: '外部内容', progress: 'done', relatedStrategies: [] },
+  { id: 'T-2611', name: '欧洲行业稿：待核验服务承诺', type: 'external', priority: 'P3', source: '演示任务', strategy: '', persona: '航空采购', factor: '服务承诺', methods: ['承诺核验'], destination: '外部内容', progress: 'brief', relatedStrategies: [] },
 ]
 
 export const initialTasks: GeoTask[] = [

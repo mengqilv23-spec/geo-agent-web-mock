@@ -22,6 +22,8 @@ import GeoPageIntro from '../components/workbench/shared/GeoPageIntro.vue'
 import { useMarketConfiguration } from '../composables/use-market-configuration'
 import { useMonitoringPlatforms } from '../composables/use-monitoring-platforms'
 import { useMonitoringRound } from '../composables/use-monitoring-round'
+import { useWorkbenchTasksStore } from '../stores/workbench-tasks'
+import { expireUnsubmittedWebsiteTasks } from '../workflows/task-workflow'
 import { useMonitoringSchedule } from '../composables/use-monitoring-schedule'
 import { marketLanguageLabels, toMonitoringOverviewMetrics } from '../data/monitoring-overview-summary'
 import { referenceMonitoringResults } from '../data/reference-monitoring-results'
@@ -38,6 +40,7 @@ const geoContext = useGeoContextStore()
 const marketConfigurationLoaded = shallowRef(false)
 const roundTriggerPending = ref(false)
 const roundTriggerError = ref('')
+const workbenchTasks = useWorkbenchTasksStore()
 const marketLanguage = shallowRef({ market: '', language: '' })
 const marketLabel = computed(() => [marketLanguage.value.market, marketLanguage.value.language].filter(Boolean).join(' / '))
 const brandKnowledgeEditorOpen = shallowRef(false)
@@ -332,6 +335,7 @@ async function launchManualRound() {
   roundTriggerError.value = ''
   try {
     await triggerRound()
+    expireUnsubmittedWebsiteTasks(workbenchTasks.tasks)
     startDataProcessing()
     await monitoringRound.load()
   }

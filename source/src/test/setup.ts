@@ -17,5 +17,8 @@ if (!HTMLDialogElement.prototype.close) {
 afterEach(() => {
   document.body.innerHTML = '<div id="app"></div>'
   document.documentElement.style.overflow = ''
+  for (const key of Object.keys(window.localStorage)) {
+    if (key.startsWith('geo-task-draft:')) window.localStorage.removeItem(key)
+  }
   vi.useRealTimers()
 })

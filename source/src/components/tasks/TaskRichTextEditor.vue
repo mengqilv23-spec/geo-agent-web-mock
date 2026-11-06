@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Color, TextStyle } from '@tiptap/extension-text-style'
+import { Mark, type Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
-import { ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -12,6 +13,8 @@ const props = withDefaults(defineProps<{
   fullWidth?: boolean
   aiOptimize?: boolean
   aiCallsRemaining?: number
+  externalClaims?: Array<{ id: string, text: string, source: string, confirmed: boolean }>
+  canConfirmExternalClaims?: boolean
 }>(), {
   editable: true,
   label: '内容正文',
@@ -19,9 +22,10 @@ const props = withDefaults(defineProps<{
   fullWidth: false,
   aiOptimize: false,
   aiCallsRemaining: 2,
+  externalClaims: () => [],
+  canConfirmExternalClaims: false,
 })
-const emit = defineEmits<{ 'update:modelValue': [value: string], 'ai-call': [] }>()
-defineSlots<{ supplement?: () => any }>()
+const emit = defineEmits<{ 'update:modelValue': [value: string], 'ai-call': [], 'confirm-external-claim': [id: string] }>()
 
 function editorContent(value: string) {
   if (!value)
@@ -31,12 +35,62 @@ function editorContent(value: string) {
   return value.split('\n').map(line => `<p>${line.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') || '<br>'}</p>`).join('')
 }
 
+const ExternalClaim = Mark.create({
+  name: 'externalClaim',
+  addAttributes() { return { id: { default: null, parseHTML: element => element.getAttribute('data-external-claim-id'), renderHTML: attributes => ({ 'data-external-claim-id': attributes.id }) } } },
+  parseHTML() { return [{ tag: 'span[data-external-claim-id]' }] },
+  renderHTML({ HTMLAttributes }) { return ['span', { ...HTMLAttributes, class: 'task-external-claim' }, 0] },
+})
+
 const editor = useEditor({
   content: editorContent(props.modelValue),
   editable: props.editable,
-  extensions: [StarterKit.configure({ link: false, italic: { HTMLAttributes: { class: 'task-rich-italic' } } }), TextStyle, Color.configure({ types: ['textStyle'] })],
+  extensions: [StarterKit.configure({ link: false, italic: { HTMLAttributes: { class: 'task-rich-italic' } } }), TextStyle, Color.configure({ types: ['textStyle'] }), ExternalClaim],
   onUpdate: ({ editor: currentEditor }) => emit('update:modelValue', currentEditor.getHTML()),
+  onSelectionUpdate: ({ editor: currentEditor }) => updateSelection(currentEditor),
+  onCreate: () => { void nextTick(syncClaimAppearance) },
 })
+
+const editorRoot = ref<HTMLElement | null>(null)
+const aiMenuOpen = ref(false)
+const hasSelection = ref(false)
+const bubblePosition = ref({ left: 0, top: 0 })
+const bubbleVisible = computed(() => props.editable && hasSelection.value && !aiPanelOpen.value)
+const activeClaimId = ref<string | null>(null)
+const claimPosition = ref({ left: 12, top: 12 })
+const activeClaim = computed(() => props.externalClaims.find(claim => claim.id === activeClaimId.value))
+const visibleClaims = computed(() => props.externalClaims.filter(claim => props.modelValue.includes(`data-external-claim-id="${claim.id}"`)))
+const pendingClaimCount = computed(() => visibleClaims.value.filter(claim => !claim.confirmed).length)
+
+function onContentClick(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  const claim = target.closest<HTMLElement>('[data-external-claim-id]')
+  activeClaimId.value = claim?.dataset.externalClaimId || null
+  if (claim && editorRoot.value) {
+    const rect = claim.getBoundingClientRect()
+    const root = editorRoot.value.getBoundingClientRect()
+    claimPosition.value = { left: Math.max(12, Math.min(rect.left - root.left, root.width - 300)), top: rect.bottom - root.top + 8 }
+  }
+}
+
+function updateSelection(current: Editor) {
+  const selection = current.state.selection
+  hasSelection.value = !selection.empty && Boolean(current.state.doc.textBetween(selection.from, selection.to, ' ').trim())
+  if (!hasSelection.value || !editorRoot.value)
+    return
+  try {
+    const start = current.view.coordsAtPos(selection.from)
+    const end = current.view.coordsAtPos(selection.to)
+    const root = editorRoot.value.getBoundingClientRect()
+    bubblePosition.value = {
+      left: Math.max(84, Math.min((start.left + end.right) / 2 - root.left, root.width - 84)),
+      top: Math.max(8, Math.min(start.top, end.top) - root.top - 46),
+    }
+  }
+  catch {
+    bubblePosition.value = { left: 160, top: 8 }
+  }
+}
 
 const aiPanelOpen = ref(false)
 const aiPreviewOpen = ref(false)
@@ -52,6 +106,17 @@ watch(() => props.modelValue, (value) => {
     editor.value.commands.setContent(editorContent(value), { emitUpdate: false })
 })
 watch(() => props.editable, value => editor.value?.setEditable(value))
+function syncClaimAppearance() {
+  const claims = props.externalClaims
+  editorRoot.value?.querySelectorAll<HTMLElement>('[data-external-claim-id]').forEach((element) => {
+    element.classList.toggle('is-confirmed', Boolean(claims.find(claim => claim.id === element.dataset.externalClaimId)?.confirmed))
+  })
+}
+onMounted(() => { void nextTick(syncClaimAppearance) })
+watch(() => props.externalClaims, async () => {
+  await nextTick()
+  syncClaimAppearance()
+}, { deep: true, immediate: true })
 
 function run(command: 'bold' | 'italic' | 'underline' | 'bulletList' | 'orderedList' | 'blockquote' | 'undo' | 'redo' | 'heading' | 'paragraph') {
   if (!editor.value)
@@ -112,13 +177,7 @@ function openAiOptimize(scope: 'paragraph' | 'article' = 'paragraph') {
     selectionRange.value = { from: selection.from, to: selection.to }
     selectedText.value = current.state.doc.textBetween(selection.from, selection.to, '\n')
   }
-  else if (selection.$from.parent.isTextblock) {
-    selectionRange.value = { from: selection.$from.start(), to: selection.$from.end() }
-    selectedText.value = selection.$from.parent.textContent
-  }
   else {
-    aiError.value = '请先选中需要优化的段落或文字。'
-    aiPanelOpen.value = true
     return
   }
   aiError.value = ''
@@ -127,6 +186,7 @@ function openAiOptimize(scope: 'paragraph' | 'article' = 'paragraph') {
   previewText.value = selectedText.value
   aiPreviewOpen.value = false
   aiPanelOpen.value = true
+  aiMenuOpen.value = false
 }
 
 function useSuggestion(value: string) {
@@ -170,7 +230,7 @@ defineExpose({ focusEditor })
 </script>
 
 <template>
-  <section class="task-rich-editor" :class="{ 'is-editable': editable }" :aria-label="label">
+  <section ref="editorRoot" class="task-rich-editor" :class="{ 'is-editable': editable }" :aria-label="label">
     <div v-if="editable" class="task-rich-editor__toolbar" role="toolbar" aria-label="正文格式">
       <button
         v-for="control in controls"
@@ -197,14 +257,19 @@ defineExpose({ focusEditor })
         <input type="color" aria-label="文字颜色" value="#1D2129" @input="setTextColor">
       </label>
       <span v-if="aiOptimize" class="task-rich-editor__divider" aria-hidden="true" />
-      <button v-if="aiOptimize" type="button" class="task-rich-editor__ai-trigger" data-test="open-ai-optimize" @mousedown.prevent @click="openAiOptimize('paragraph')">
-        <span aria-hidden="true">✦</span> AI 优化选中段落
-      </button>
-      <button v-if="aiOptimize" type="button" class="task-rich-editor__ai-regenerate" data-test="regenerate-article" @mousedown.prevent @click="openAiOptimize('article')">
-        重新生成文章
-      </button>
-      <span v-if="aiOptimize" class="task-rich-editor__ai-quota" data-test="ai-quota" aria-live="polite">剩余 {{ aiCallsRemaining }}/2 次</span>
-      <span class="task-rich-editor__shortcut-hint" data-test="editor-shortcuts">快捷键：⌘/Ctrl+B 加粗 · ⌘/Ctrl+I 斜体 · ⌘/Ctrl+U 下划线 · ⌘/Ctrl+Z 撤销</span>
+      <div v-if="aiOptimize" class="task-rich-editor__ai-menu-wrap">
+        <button type="button" class="task-rich-editor__ai-trigger" data-test="ai-writing-menu" :disabled="aiCallsRemaining <= 0" :title="aiCallsRemaining <= 0 ? 'AI 次数已用完' : 'AI 写作'" :aria-expanded="aiMenuOpen" aria-haspopup="menu" @mousedown.prevent @click="aiMenuOpen = !aiMenuOpen">✦ AI 写作 <span aria-hidden="true">⌄</span></button>
+        <div v-if="aiMenuOpen" class="task-rich-editor__ai-menu" role="menu" aria-label="AI 写作操作">
+          <button type="button" role="menuitem" data-test="open-ai-optimize" :disabled="!hasSelection" title="请先选中正文" @mousedown.prevent @click="openAiOptimize('paragraph')">✦ 优化选中段落</button>
+          <button type="button" role="menuitem" class="is-danger" data-test="regenerate-article" @mousedown.prevent @click="openAiOptimize('article')"><span aria-hidden="true">⚠</span> 重新生成全文</button>
+        </div>
+      </div>
+    </div>
+    <div v-if="bubbleVisible" class="task-rich-editor__bubble" :style="{ left: `${bubblePosition.left}px`, top: `${bubblePosition.top}px` }" role="toolbar" aria-label="选中文字操作" data-test="selection-bubble">
+      <button type="button" aria-label="选中文字加粗" @mousedown.prevent @click="run('bold')">B</button>
+      <button type="button" aria-label="选中文字斜体" @mousedown.prevent @click="run('italic')"><em>I</em></button>
+      <span v-if="aiOptimize" aria-hidden="true" />
+      <button v-if="aiOptimize" type="button" data-test="bubble-ai-optimize" :disabled="aiCallsRemaining <= 0" :title="aiCallsRemaining <= 0 ? 'AI 次数已用完' : 'AI 润色'" @mousedown.prevent @click="openAiOptimize('paragraph')">✦ AI 润色</button>
     </div>
     <section v-if="aiPanelOpen" class="task-rich-editor__ai-panel" data-test="ai-optimize-panel" aria-label="段落 AI 优化">
       <header class="task-rich-editor__ai-head">
@@ -213,6 +278,7 @@ defineExpose({ focusEditor })
       </header>
       <p v-if="aiError" class="task-rich-editor__ai-error" role="alert">{{ aiError }}</p>
       <template v-else>
+        <p v-if="optimizationScope === 'article'" class="task-rich-editor__ai-warning" role="note">重新生成将替换整篇正文。请先确认当前修改已保存；生成后可在预览中决定是否替换。</p>
         <div class="task-rich-editor__ai-source"><span>{{ optimizationScope === 'article' ? '当前文章' : '当前段落' }}</span><p>{{ selectedText }}</p></div>
         <label class="task-rich-editor__ai-label" for="task-ai-instruction">优化要求</label>
         <textarea id="task-ai-instruction" v-model="aiInstruction" rows="2" placeholder="写下希望如何调整；请只补充已确认的事实。" />
@@ -230,24 +296,32 @@ defineExpose({ focusEditor })
           <textarea v-model="previewText" rows="4" aria-label="优化稿预览内容" />
           <div class="task-rich-editor__ai-preview-actions">
             <button type="button" @click="aiPanelOpen = false">保留原文</button>
-            <button type="button" class="task-rich-editor__ai-generate" data-test="replace-selected-text" :disabled="!previewText.trim()" @click="replaceSelectedText">替换选中内容</button>
+            <button type="button" class="task-rich-editor__ai-generate" data-test="replace-selected-text" :disabled="!previewText.trim()" @click="replaceSelectedText">{{ optimizationScope === 'article' ? '替换全文' : '替换选中内容' }}</button>
           </div>
         </div>
       </template>
     </section>
-    <slot v-if="$slots.supplement" name="supplement" />
+    <p v-if="visibleClaims.length" class="task-rich-editor__claim-summary" data-test="external-claim-summary">请核对正文中标出的联网品牌信息<span v-if="pendingClaimCount"> · {{ pendingClaimCount }} 处待确认</span><span v-else> · 已全部确认</span></p>
     <article class="task-rich-editor__page" :class="{ 'is-full-width': fullWidth }">
       <h1 v-if="heading">
         {{ heading }}
       </h1>
-      <EditorContent :editor="editor" class="task-rich-editor__content" />
+      <EditorContent :editor="editor" class="task-rich-editor__content" @click="onContentClick" />
     </article>
+    <div v-if="activeClaim" class="task-rich-editor__claim-card" :style="{ left: `${claimPosition.left}px`, top: `${claimPosition.top}px` }" data-test="external-claim-card">
+      <button type="button" class="task-rich-editor__claim-close" aria-label="关闭核实信息" @click="activeClaimId = null">×</button>
+      <strong>核对这句联网品牌信息</strong>
+      <p>{{ activeClaim.text }}</p>
+      <small>来源：{{ activeClaim.source }}</small>
+      <button v-if="!activeClaim.confirmed && canConfirmExternalClaims" type="button" class="task-rich-editor__claim-confirm" @click="emit('confirm-external-claim', activeClaim.id); activeClaimId = null">确认准确</button>
+      <span v-else-if="activeClaim.confirmed" class="task-rich-editor__claim-done">已确认</span>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .task-rich-editor {
-  overflow: hidden;
+  position: relative;
   border: 1px solid var(--border, #dce3ef);
   border-radius: 10px;
   background: #fff;
@@ -257,17 +331,18 @@ defineExpose({ focusEditor })
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
+  gap: 4px;
+  padding: 10px;
   border-bottom: 1px solid var(--border, #e4e9f1);
   background: #f8faff;
 }
 
 .task-rich-editor__toolbar button {
   display: inline-grid;
-  min-width: 32px;
+  min-width: 28px;
   min-height: 32px;
-  padding: 0 8px;
+  flex-shrink: 0;
+  padding: 0 6px;
   place-items: center;
   border: 0;
   border-radius: 6px;
@@ -275,7 +350,7 @@ defineExpose({ focusEditor })
   color: #4c5a70;
   cursor: pointer;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 650;
 }
 
@@ -297,9 +372,29 @@ defineExpose({ focusEditor })
   background: #dce3ef;
 }
 
-.task-rich-editor__toolbar button.task-rich-editor__ai-trigger, .task-rich-editor__toolbar button.task-rich-editor__ai-regenerate { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid #d8ddff; background: #fff; color: var(--action-accent); font-size: 12px; font-weight: 600; }
-.task-rich-editor__toolbar button.task-rich-editor__ai-regenerate { border-color: var(--action-accent); background: var(--action-accent); color: #fff; }
-.task-rich-editor__ai-quota { margin-left: 2px; color: #77849a; font-size: 11px; white-space: nowrap; }
+.task-rich-editor__ai-menu-wrap { position: relative; }
+.task-rich-editor__toolbar button.task-rich-editor__ai-trigger { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid #d8ddff; background: #fff; color: var(--action-accent); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.task-rich-editor__toolbar button:disabled { opacity: .45; cursor: not-allowed; }
+.task-rich-editor__ai-menu { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: 190px; padding: 5px; border: 1px solid #e2e5ee; border-radius: 9px; background: #fff; box-shadow: 0 10px 28px rgb(28 36 64 / 15%); }
+.task-rich-editor__toolbar .task-rich-editor__ai-menu button { display: flex; width: 100%; justify-content: flex-start; gap: 7px; font-size: 12px; font-weight: 500; }
+.task-rich-editor__toolbar .task-rich-editor__ai-menu button.is-danger { color: #b94337; }
+.task-rich-editor__bubble { position: absolute; z-index: 30; display: flex; align-items: center; gap: 2px; transform: translateX(-50%); padding: 4px; border-radius: 7px; background: #222936; color: #fff; box-shadow: 0 7px 22px rgb(20 28 45 / 25%); white-space: nowrap; }
+.task-rich-editor__bubble button { min-height: 27px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.task-rich-editor__bubble button:hover { background: #3b465b; }
+.task-rich-editor__bubble button:disabled { opacity: .4; cursor: not-allowed; }
+.task-rich-editor__bubble > span { width: 1px; height: 17px; background: #596275; }
+.task-rich-editor__ai-warning { margin: 0; padding: 9px 10px; border: 1px solid #f5d8a9; border-radius: 7px; background: #fff9ed; color: #956113; font-size: 12px; }
+.task-rich-editor__claim-summary { margin: 12px 16px 0; color: #946013; font-size: 12px; }
+.task-rich-editor__content :deep(.task-external-claim) { border-bottom: 2px solid #d89422; background: #fff3d7; cursor: pointer; }
+.task-rich-editor__content :deep(.task-external-claim)::after { margin-left: 3px; padding: 1px 4px; border-radius: 4px; background: #fff0cc; color: #9b6312; content: '待核实'; font-size: 10px; white-space: nowrap; }
+.task-rich-editor__content :deep(.task-external-claim.is-confirmed) { border-bottom-color: #93cbb0; background: #ecf8f1; }
+.task-rich-editor__content :deep(.task-external-claim.is-confirmed)::after { background: #e3f6eb; color: #1c8d52; content: '已确认'; }
+.task-rich-editor__claim-card { position: absolute; z-index: 35; display: grid; width: min(300px, calc(100% - 24px)); gap: 8px; box-sizing: border-box; padding: 14px; border: 1px solid #e8c787; border-radius: 9px; background: #fff; box-shadow: 0 12px 30px rgb(28 36 64 / 18%); color: #263348; font-size: 12px; }
+.task-rich-editor__claim-card p { margin: 0; line-height: 1.5; }
+.task-rich-editor__claim-card small { color: #758197; }
+.task-rich-editor__claim-close { position: absolute; top: 5px; right: 8px; border: 0; background: transparent; color: #748096; font-size: 18px; cursor: pointer; }
+.task-rich-editor__claim-confirm { justify-self: end; padding: 5px 10px; border: 0; border-radius: 6px; background: var(--action-accent); color: #fff; font: inherit; cursor: pointer; }
+.task-rich-editor__claim-done { justify-self: end; color: #1c9b5a; }
 .task-rich-editor__ai-panel { display: grid; gap: 10px; margin: 12px 14px; padding: 14px; border: 1px solid #dce2f0; border-radius: 10px; background: #fbfcff; }
 .task-rich-editor__ai-head, .task-rich-editor__ai-foot, .task-rich-editor__ai-preview-head, .task-rich-editor__ai-preview-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .task-rich-editor__ai-head > div { display: grid; gap: 2px; }
@@ -346,13 +441,6 @@ defineExpose({ focusEditor })
 
 .task-rich-editor__color:hover { background: var(--action-subtle-background, #f2f3fd); }
 .task-rich-editor__color input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-
-.task-rich-editor__shortcut-hint {
-  margin-left: auto;
-  color: var(--text-muted, #86909c);
-  font-size: 12px;
-  line-height: 1.5;
-}
 
 .task-rich-editor__content :deep(.ProseMirror) {
   min-height: 240px;

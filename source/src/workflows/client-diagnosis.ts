@@ -37,8 +37,8 @@ export function platformGapBreakdown(persona: Persona, theme: string) {
 export function normalizeClientFindings(items: AuditFinding[]) {
   return items.filter(item => !(item.route === 'advice' && item.category !== '官网结构')).map(item => {
     const copy = { ...item }
-    if (copy.id === 'F9') { copy.route = 'strategy'; copy.category = '官网内容'; copy.title = '官网地址与已确认资料不一致'; copy.detail = '演示核对：官网地址与已确认的企业资料不一致；本任务仅调整官网内容，外部平台信息另行核查。'; copy.method = '官网地址内容核对'; copy.routeReason = '先由客户确认官网内容修改，再进入任务 Brief；不自动修改 LinkedIn 或行业名录。' }
-    if (copy.id === 'F8-2') { copy.route = 'knowledge'; copy.category = '官网内容'; copy.status = '待补充知识'; copy.knowledgeTopic = '工程师身份与专业背景'; copy.advice = '请补充已核实的工程师身份、专业背景及作者介绍资料；补充后下一次监测重新核对。'; copy.routeReason = '未有标准身份资料前，无法判断官网作者介绍是否完整或准确，不生成改写任务。' }
+    if (copy.id === 'F9') { copy.route = 'strategy'; copy.treatment = 'website-content-review'; copy.category = '官网内容'; copy.title = '官网地址与已确认资料不一致'; copy.detail = '演示核对：官网地址与已确认的企业资料不一致；本任务仅调整官网内容，外部平台信息另行核查。'; copy.method = '官网地址内容核对'; copy.routeReason = '先由客户确认官网内容修改，再进入任务 Brief；不自动修改 LinkedIn 或行业名录。' }
+    if (copy.id === 'F8-2') { copy.route = 'knowledge'; copy.treatment = 'website-content-knowledge'; copy.category = '官网内容'; copy.status = '待补充知识'; copy.knowledgeTopic = '工程师身份与专业背景'; copy.advice = '请补充已核实的工程师身份、专业背景及作者介绍资料；补充后下一次监测重新核对。'; copy.routeReason = '未有标准身份资料前，无法判断官网作者介绍是否完整或准确，不生成改写任务。' }
     return copy
   })
 }
@@ -61,7 +61,7 @@ export function createClientFindingTask(tasks: GeoTask[], finding: AuditFinding)
   }
   if (finding.route !== 'strategy') throw Error('当前条目不能生成内容任务')
   const auditContent = officialContentSnapshot(finding)
-  const task: GeoTask = { id: `T-${Math.max(2500, ...tasks.map(task => Number(task.id.replace(/\D/g, '')) || 0)) + 1}`, name: finding.title, type: 'web', source: finding.id, strategy: '', persona: '官网目标买家', factor: finding.check, methods: [finding.method], destination: '官网内容', progress: 'brief', relatedStrategies: [], evidence: finding.evidence ?? finding.detail, sourceKind: auditContent ? 'geo-audit-content' : undefined, auditContent }
+  const task: GeoTask = { id: `T-${Math.max(2500, ...tasks.map(task => Number(task.id.replace(/\D/g, '')) || 0)) + 1}`, name: finding.title, origin: 'geo-audit', type: 'web', source: finding.id, strategy: '', persona: '官网目标买家', factor: finding.check, methods: [finding.method], destination: '官网内容', progress: 'brief', relatedStrategies: [], evidence: finding.evidence ?? finding.detail, sourceKind: auditContent ? 'geo-audit-content' : undefined, auditContent }
   tasks.push(task)
   return task
 }
@@ -73,6 +73,15 @@ export function strategyGapEvidence(strategy: Strategy, personas: readonly Perso
     if (topic) return { persona: persona.name, topic, evidence }
   }
   return null
+}
+
+/** Stable references to positive buyer-coverage gaps that support a strategy. */
+export function strategyCoverageGapRefs(strategy: Strategy, personas: readonly Persona[]) {
+  return personas
+    .filter(persona => strategy.personaIds?.includes(persona.id))
+    .flatMap(persona => personaEvidence(persona).topics
+      .filter(topic => strategy.gapNames?.includes(topic.name) && topic.gap !== null && topic.gap > 0)
+      .map(topic => `${persona.id}:${topic.name}`))
 }
 
 export interface GapFacts { verified: boolean, capability: boolean | null, contentExists: boolean, clear: boolean, readable: boolean, thirdParty: boolean }
@@ -101,7 +110,7 @@ export function clientStrategyPlan(strategy: Strategy) {
 export function createVerificationTask(tasks: GeoTask[], strategy: Strategy): GeoTask {
   const existing = tasks.find(task => task.executionKind === 'verification' && task.strategy === strategy.id)
   if (existing) return existing
-  const task: GeoTask = { id: `T-${Math.max(2500, ...tasks.map(task => Number(task.id.replace(/\D/g, '')) || 0)) + 1}`, name: `核查：${strategy.title}`, executionKind: 'verification', type: 'web', source: strategy.source, strategy: strategy.id, persona: strategy.persona, factor: strategy.factor, methods: ['核查原始回答、真实业务能力与已有资料'], destination: '核查记录', progress: 'brief', relatedStrategies: [strategy.id], evidence: strategy.evidence }
+  const task: GeoTask = { id: `T-${Math.max(2500, ...tasks.map(task => Number(task.id.replace(/\D/g, '')) || 0)) + 1}`, name: `核查：${strategy.title}`, origin: strategy.origin ?? 'buyer-coverage', executionKind: 'verification', type: 'web', source: strategy.source, strategy: strategy.id, persona: strategy.persona, factor: strategy.factor, methods: ['核查原始回答、真实业务能力与已有资料'], destination: '核查记录', progress: 'brief', relatedStrategies: [strategy.id], evidence: strategy.evidence }
   tasks.push(task)
   strategy.confirmed = true
   return task

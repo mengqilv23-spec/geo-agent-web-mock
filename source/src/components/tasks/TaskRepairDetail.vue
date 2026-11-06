@@ -15,14 +15,18 @@ const props = defineProps<{
 }>()
 
 const repairReason = '技术问题已定位到官网，由官网处理流程返回修复结果。'
-const description = computed(() => props.task.evidence || props.task.name || '技术修复')
-const returned = computed(() => ['site_returned', 'site_verifying', 'site_failed', 'site_publish', 'recheck', 'done'].includes(props.task.progress))
+const description = computed(() => props.task.evidence || props.task.name || '官网结构与技术')
+const returned = computed(() => props.task.completionOutcome !== 'expired-unexecuted' && ['site_returned', 'site_verifying', 'site_failed', 'site_publish', 'recheck', 'done'].includes(props.task.progress))
 const result = computed(() => props.site.result || (returned.value ? `${description.value}；官网已返回处理结果。` : ''))
 const resultIcon = computed(() => props.task.progress === 'site_failed' ? 'warning' : 'check')
 </script>
 
 <template>
   <div class="tw-repair-detail">
+    <Card v-if="task.completionOutcome === 'expired-unexecuted'" class="tw-repair-result-card" data-test="repair-expired-result">
+      <header class="tw-repair-result-card__heading"><div><span class="tw-repair-result-card__eyebrow">任务已完成</span><h2>未执行优化</h2></div><Tag tone="neutral">已关闭</Tag></header>
+      <p>新一轮监测生成时，本任务仍未提交官网，已按时限关闭，不能继续处理。</p>
+    </Card>
     <Card v-if="returned" class="tw-repair-result-card" data-test="repair-result" data-state="returned">
       <header class="tw-repair-result-card__heading">
         <div>
@@ -78,7 +82,7 @@ const resultIcon = computed(() => props.task.progress === 'site_failed' ? 'warni
       <section class="tw-repair-scope" data-test="repair-description">
         <header class="tw-repair-scope__heading">
           <div>
-            <h3>技术修复方案</h3>
+            <h3>官网结构与技术方案</h3>
           </div>
         </header>
         <div class="tw-repair-section__body">

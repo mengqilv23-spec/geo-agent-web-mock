@@ -19,6 +19,28 @@ function makeTask(type: GeoTask['type'], progress: GeoTask['progress']): GeoTask
 }
 
 describe('prototype task ownership and backend-driven repair status', () => {
+  it('describes the actual content channel and keeps verification separate from publication', () => {
+    const website = makeTask('web', 'brief')
+    website.name = '航空采购 FAQ 与产能表'
+    expect(ensureWorkflow(website).brief.executionTarget).toBe('官网发布或更新《航空采购 FAQ 与产能表》相关内容')
+
+    const linkedin = makeTask('external', 'brief')
+    linkedin.name = 'LinkedIn 工程师专栏'
+    linkedin.destination = '外部内容'
+    expect(ensureWorkflow(linkedin).brief.executionTarget).toBe('领英发布《LinkedIn 工程师专栏》相关内容')
+
+    const verification = makeTask('web', 'brief')
+    verification.name = '核查：德国本地服务能力'
+    verification.executionKind = 'verification'
+    verification.destination = '核查记录'
+    const flow = ensureWorkflow(verification)
+    expect(flow.brief.executionTarget).toContain('核查「德国本地服务能力」')
+    flow.brief.executionTarget = '核查记录'
+    expect(ensureWorkflow(verification).brief.executionTarget).toContain('核查「德国本地服务能力」')
+    flow.brief.executionTarget = '人工指定的核查对象'
+    expect(ensureWorkflow(verification).brief.executionTarget).toBe('人工指定的核查对象')
+  })
+
   it('restores editability for a saved Brief missing its status', () => {
     const task = makeTask('web', 'brief')
     const workflow = ensureWorkflow(task)

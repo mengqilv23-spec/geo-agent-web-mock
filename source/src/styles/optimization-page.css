@@ -35,6 +35,8 @@ html.ce-iframe-root .geo-optimization .geo-action-card.has-pending{border-color:
 .geo-filter-options .ce-segmented__input:focus-visible + .ce-segmented__option{outline:2px solid var(--geo-brand);outline-offset:1px}
 .geo-optimization .geo-task-table-wrap{max-width:100%;margin:16px var(--space-surface-content) 20px}
 .geo-optimization .geo-task-table .data-list__panel{box-shadow:none}
+.geo-optimization .geo-task-table table{min-width:1000px}
+.geo-optimization .geo-task-table th:first-child,.geo-optimization .geo-task-table td:first-child{min-width:96px;white-space:nowrap;overflow-wrap:normal}
 .geo-optimization .geo-task-table th{background:var(--geo-fill);font-weight:600}
 .geo-optimization .geo-task-table th,.geo-optimization .geo-task-table td{text-align:center}
 .geo-optimization .geo-task-table td{vertical-align:middle}

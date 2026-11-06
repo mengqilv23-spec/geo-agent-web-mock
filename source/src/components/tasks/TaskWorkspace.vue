@@ -5,10 +5,11 @@ import type { DropdownSelectOption } from '../ui/ce/dropdown-select/types'
 import type { KnowledgeUploadDraft } from './KnowledgeUploadDrawer.vue'
 import { computed, reactive, shallowRef, watch } from 'vue'
 import { useGeoWorkbenchRouteContext } from '../../composables/workbench-route-context'
+import { auditFindings, officialContentSnapshot } from '../../data/geo-data'
 import { createRepairTask } from '../../services/geo-orchestration'
 import { directRepairStatus, isDirectRepairTask } from '../../workflows/direct-repair'
 import { taskFlowFor } from '../../workflows/task-flow'
-import { advanceAutomatic, applyAction, briefGate, canPrepareBrief, ensureWorkflow, getTaskBucket, hasAutomaticStep, ignoredTaskFor, ignoreOwner, isTaskIgnored, knowledgeLibrary, reviewOwner, taskStageLabel } from '../../workflows/task-workflow'
+import { advanceAutomatic, applyAction, briefGate, canPrepareBrief, ensureWorkflow, getTaskBucket, hasAutomaticStep, ignoredTaskFor, ignoreOwner, isTaskIgnored, knowledgeLibrary, reviewOwner, taskStageLabel, validPublishUrl } from '../../workflows/task-workflow'
 import Button from '../ui/ce/button/Button.vue'
 import Drawer from '../ui/ce/drawer/Drawer.vue'
 import DropdownSelect from '../ui/ce/dropdown-select/DropdownSelect.vue'
@@ -16,7 +17,6 @@ import Tag from '../ui/ce/tag/Tag.vue'
 import Toast from '../ui/ce/toast/Toast.vue'
 import AppIcon from '../ui/icons/AppIcon.vue'
 import KnowledgeUploadDrawer from './KnowledgeUploadDrawer.vue'
-import TaskPermissionsDrawer from './TaskPermissionsDrawer.vue'
 import TaskProgressTimeline from './TaskProgressTimeline.vue'
 import TaskRepairDetail from './TaskRepairDetail.vue'
 import TaskReviewInsights from './TaskReviewInsights.vue'
@@ -26,6 +26,7 @@ import TaskSiteCollaboration from './TaskSiteCollaboration.vue'
 const props = defineProps<{ task: GeoTask, role: UserRole, serviceMode: ServiceMode, clientPreview: boolean }>()
 const emit = defineEmits<{ back: [], change: [], setTestRole: [role: UserRole] }>()
 const routeContext = useGeoWorkbenchRouteContext()
+const publishUrl = shallowRef('')
 function completeVerification() {
   const task = props.task
   if (task.progress !== 'human' || !draft.body.trim() || !task.verificationOutcome) return
@@ -63,6 +64,14 @@ function completeVerification() {
   }
   flow.value.reviews.push({ time: new Date().toISOString(), actor: '客户', note: `核查完成：${draft.body}` })
   task.progress = 'done'
+  persistLocalDraft()
+  emit('change')
+}
+function saveVerificationDraft() {
+  if (props.task.progress === 'done') return
+  flow.value.output.body = draft.body
+  message.value = '核查草稿已保存，任务仍待完成'
+  persistLocalDraft()
   emit('change')
 }
 function openVerificationFollowup() {
@@ -78,19 +87,41 @@ const tab = shallowRef('brief')
 const drawer = shallowRef<'brief' | 'knowledge' | 'upload' | 'output' | 'feedback' | 'retry' | 'ignore' | null>(null)
 const error = shallowRef('')
 const message = shallowRef('')
-const publishPromptDismissed = shallowRef(false)
 const ignoredReason = shallowRef('')
 const ignoredExplanation = shallowRef('')
 const note = shallowRef('')
 const simulateFailure = shallowRef(false)
 const customMethod = shallowRef('')
-const permissionDrawerOpen = shallowRef(false)
 const validationToastOpen = shallowRef(false)
 const validationToastMessage = shallowRef('')
 const validationToastMessageId = shallowRef(0)
+const validationToastVariant = shallowRef<'error' | 'warning'>('error')
 const directInstruction = shallowRef('')
 const webSupplement = shallowRef(false)
 const draft = reactive<{ brief: TaskBrief, methods: string[], knowledge: TaskKnowledge[], title: string, body: string }>({ brief: {} as TaskBrief, methods: [], knowledge: [], title: '', body: '' })
+function localDraftKey() {
+  return `geo-task-draft:${props.serviceMode}:${props.role}:${props.task.id}`
+}
+function readLocalDraft(): { contentInstruction?: string, webSupplement?: boolean, title?: string, body?: string } | null {
+  try {
+    const raw = window.localStorage.getItem(localDraftKey())
+    return raw ? JSON.parse(raw) : null
+  }
+  catch { return null }
+}
+function persistLocalDraft() {
+  try {
+    const brief = props.task.workflow?.brief
+    const output = props.task.workflow?.output
+    const changed = directInstruction.value !== (brief?.contentInstruction || '')
+      || webSupplement.value !== (brief?.webSupplement ?? true)
+      || draft.title !== (output?.title || '')
+      || draft.body !== (output?.body || '')
+    if (changed) window.localStorage.setItem(localDraftKey(), JSON.stringify({ contentInstruction: directInstruction.value, webSupplement: webSupplement.value, title: draft.title, body: draft.body }))
+    else window.localStorage.removeItem(localDraftKey())
+  }
+  catch { /* The editable fields remain available for this session. */ }
+}
 const aiCallsRemaining = shallowRef(2)
 function aiQuotaStorageKey(taskId: string, role: UserRole) {
   return `geo-task-ai-quota:${taskId}:${role}${props.serviceMode === 'agent' ? ':agent' : ''}`
@@ -116,8 +147,29 @@ function consumeAiCall() {
     // Keep the quota for the current view even when browser storage is unavailable.
   }
 }
+function confirmExternalClaim(id: string) {
+  if (props.role !== 'client') return
+  const claim = flow.value.output.externalClaims?.find(item => item.id === id)
+  if (!claim || !draft.body.includes(`data-external-claim-id="${id}"`)) return
+  claim.confirmed = true
+  flow.value.reviews.push({ time: new Date().toISOString(), actor: '客户', note: `已核对联网品牌信息：${claim.text}` })
+  emit('change')
+}
 const briefFields: Array<{ key: 'goal' | 'persona' | 'factor' | 'executionTarget', label: string }> = [{ key: 'goal', label: '任务目标' }, { key: 'persona', label: '目标人设' }, { key: 'factor', label: '决策因子' }, { key: 'executionTarget', label: '执行对象' }]
-const auditContent = computed(() => props.task.sourceKind === 'geo-audit-content' ? props.task.auditContent : undefined)
+const auditContent = computed(() => {
+  if (props.task.origin !== 'geo-audit' || props.task.type !== 'web' || props.task.executionKind === 'verification') return undefined
+  if (props.task.source === 'F9') return officialContentSnapshot(auditFindings.find(finding => finding.id === 'F9')!)
+  if (props.task.auditContent) return props.task.auditContent
+  const finding = auditFindings.find(item => item.id === props.task.source)
+  const evidence = props.task.evidence || finding?.detail || `官网有关「${props.task.name}」的内容需要核对。`
+  return {
+    abnormality: `${evidence}这可能影响 AI 准确识别相关品牌信息。`,
+    originalContent: '',
+    modificationScope: `官网：围绕「${props.task.name}」，结合已确认的品牌资料与「${props.task.factor}」相关信息，${props.task.methods.join('、') || '更新相关内容'}。`,
+  }
+})
+const auditModificationScope = computed(() => auditContent.value?.modificationScope
+  || `官网：围绕「${props.task.name}」，结合已确认的品牌资料，更新相关页面的文字内容。`)
 const methodOptions = ['对比表', 'FAQ / Q&A', '统计数据注入', '专家观点', '案例证明', '定义框', 'JSON-LD', 'sameAs', '内容表达优化']
 const ignoreReasonOptions: DropdownSelectOption[] = [
   { value: 'Agent 判断错误 / 策略不适用', label: 'Agent 判断错误 / 策略不适用' },
@@ -133,20 +185,38 @@ const supplementTopics = computed(() => /代理|服务|本地/.test(`${props.tas
   : /交付|交期|产能/.test(`${props.task.name} ${props.task.factor}`)
     ? ['交期与产能', '产能规划', 'SLA', '业务限制']
     : ['常见问题', '标准答案', '限制条件'])
-watch(() => props.task, (task) => {
+watch(() => [props.task, props.role, props.serviceMode] as const, ([task]) => {
   ensureWorkflow(task)
   tab.value = task.progress === 'brief' ? 'brief' : task.type === 'repair' ? 'website' : 'output'
   drawer.value = null
   error.value = ''
   message.value = ''
-  publishPromptDismissed.value = false
   ignoredReason.value = ''
   ignoredExplanation.value = ''
   directInstruction.value = task.workflow?.brief.contentInstruction || ''
   webSupplement.value = task.workflow?.brief.webSupplement ?? true
   draft.title = task.workflow?.output.title || ''
   draft.body = task.workflow?.output.body || ''
+  const savedDraft = readLocalDraft()
+  if (savedDraft) {
+    directInstruction.value = savedDraft.contentInstruction ?? directInstruction.value
+    webSupplement.value = savedDraft.webSupplement ?? webSupplement.value
+    draft.title = savedDraft.title ?? draft.title
+    draft.body = savedDraft.body ?? draft.body
+  }
 }, { immediate: true })
+watch([directInstruction, webSupplement, () => draft.title, () => draft.body], persistLocalDraft, { flush: 'post' })
+watch(() => draft.body, (body) => {
+  if (!props.task.workflow?.output.externalClaims?.length) return
+  const document = new DOMParser().parseFromString(body, 'text/html')
+  for (const claim of props.task.workflow.output.externalClaims) {
+    const sentence = document.querySelector(`[data-external-claim-id="${claim.id}"]`)?.textContent?.trim()
+    if (sentence && sentence !== claim.text) {
+      claim.text = sentence
+      claim.confirmed = false
+    }
+  }
+})
 watch(() => [props.task.id, props.role, props.serviceMode] as const, ([taskId, role]) => refreshAiQuota(taskId, role), { immediate: true })
 const flow = computed(() => props.task.workflow!)
 watch(() => props.task.progress, (progress, previous) => {
@@ -161,15 +231,20 @@ watch(() => props.task.workflow?.output.title, (title, previous) => {
   if (draft.title === previous || !draft.title)
     draft.title = title || ''
 })
+watch(() => props.task.workflow?.url, (url) => { publishUrl.value = url || '' }, { immediate: true })
 
 const ignoredTask = computed(() => ignoredTaskFor(props.task))
 const canIgnoreCurrentStep = computed(() => ignoreOwner(props.task, props.serviceMode) === props.role)
 const waitingForOperationsReview = computed(() => props.role === 'client' && props.task.progress === 'human' && reviewOwner(props.task, props.serviceMode) === 'ops' && !ignoredTask.value)
 const operationsWaitingForClientReview = computed(() => props.serviceMode === 'managed' && props.role === 'ops' && props.task.progress === 'client_review')
 const customerFinalReview = computed(() => props.role === 'client' && props.task.progress === 'client_review')
+const customerRevisionRequests = computed(() => flow.value.customerRevisionRequests ?? 0)
+const canRequestAgentRevision = computed(() => props.serviceMode === 'managed' && props.role === 'client' && props.task.type === 'web' && props.task.progress === 'client_review' && customerRevisionRequests.value < 3)
 const flowSteps = computed(() => taskFlowFor(props.task, props.serviceMode))
 const isContentPreparation = computed(() => ['todo', 'running', 'client_content_review', 'human', 'client_review'].includes(props.task.progress))
 const siteStatus = computed(() => {
+  if (props.task.completionOutcome === 'expired-unexecuted')
+    return { label: '已完成', tone: 'neutral' as const }
   if (isDirectRepairTask(props.task))
     return { label: directRepairStatus(props.task.progress === 'done'), tone: props.task.progress === 'done' ? 'green' as const : 'blue' as const }
   if (props.task.type === 'repair') {
@@ -196,36 +271,45 @@ const siteStatus = computed(() => {
     return { label: 'AI 建站执行中', tone: 'blue' as const }
   return { label: taskStageLabel(props.task, props.serviceMode), tone: 'blue' as const }
 })
-const taskContextLabel = computed(() => {
-  const strategy = props.task.strategy === '不经过候选策略' ? '未经过 GS 审核' : props.task.strategy
-  return props.task.type === 'repair'
-    ? `${props.task.destination} · ${strategy}`
-    : `${props.task.destination} · ${props.task.source} · ${strategy}`
-})
-const briefTaskNumber = computed(() => Number(props.task.id.match(/(\d{2})$/)?.[1]) || props.task.methods.length)
-const taskSubtitle = computed(() => props.task.progress === 'brief' && props.task.type !== 'repair'
-  ? props.task.source
-  : `${props.task.id}${props.task.type === 'repair' ? ' · 官网技术修复' : ''}`)
+const taskPriority = computed(() => props.task.priority
+  ?? routeContext.strategies?.find(strategy => strategy.id === props.task.strategy)?.priority
+  ?? routeContext.findings?.find(finding => props.task.source.split(/[\s/·]+/).includes(finding.id))?.priority)
+const previewHref = computed(() => `${import.meta.env.BASE_URL}optimization/tasks/${encodeURIComponent(props.task.id)}/preview`)
+const taskSubtitle = computed(() => props.task.origin === 'buyer-coverage'
+  ? '买家关注点与品牌表现'
+  : props.task.origin === 'geo-audit' ? `官网 GEO 体检 · ${props.task.source}` : props.task.source)
 const editableBrief = computed(() => canPrepareBrief(props.task, props.role, props.serviceMode))
 const reviewing = computed(() => ['client_content_review', 'human', 'client_review'].includes(props.task.progress) && reviewOwner(props.task, props.serviceMode) === props.role && !(props.serviceMode === 'agent' && props.role === 'ops'))
 const contentReviewVisible = computed(() => ['todo', 'running', 'client_content_review', 'human', 'client_review'].includes(props.task.progress))
 const operationsContentReview = computed(() => props.task.progress === 'human' && props.role === 'ops')
 const canEditWebSupplement = computed(() => editableBrief.value || reviewing.value || (props.role === 'client' && ['todo', 'running'].includes(props.task.progress)))
 const outputDirty = computed(() => draft.title !== flow.value.output.title || draft.body !== flow.value.output.body)
+const briefDirty = computed(() => directInstruction.value !== (flow.value.brief.contentInstruction || '')
+  || webSupplement.value !== (flow.value.brief.webSupplement ?? true))
+const hasUnsavedContent = computed(() => (props.task.type === 'web' || props.task.type === 'external')
+  && ((editableBrief.value && briefDirty.value)
+    || (outputEditable.value && outputDirty.value)
+    || (props.task.executionKind === 'verification' && props.task.progress !== 'done' && draft.body !== flow.value.output.body)))
 const siteOwner = computed(() => props.role === (props.serviceMode === 'managed' ? 'ops' : 'client'))
+const outputEditable = computed(() => reviewing.value || (props.task.progress === 'site_failed' && siteOwner.value))
+const finalQualityVisible = computed(() => props.task.type !== 'repair' && Boolean(flow.value.output.body))
 const gate = computed(() => briefGate(props.task, directInstruction.value, webSupplement.value))
 const automatic = computed(() => hasAutomaticStep(props.task, props.serviceMode))
 const tabs = computed(() => [
   { key: 'output', label: props.task.type === 'repair' ? '修复结果' : ['site_submit', 'site_submitted', 'site_running', 'site_verifying', 'site_failed', 'site_publish', 'publish', 'recheck', 'done'].includes(props.task.progress) ? '最终稿' : '生成内容' },
   { key: 'brief', label: 'Brief' },
   ...(props.task.type !== 'external' && (props.task.type === 'repair' || getTaskBucket(props.task) === 'website' || (props.serviceMode === 'agent' && !!flow.value.site.result)) ? [{ key: 'website', label: props.task.type === 'repair' ? '官网回传' : '执行与验证' }] : []),
-  { key: 'versions', label: '版本 / Diff' },
   { key: 'records', label: '审核记录' },
+  { key: 'versions', label: '版本' },
 ].filter(item => props.task.progress !== 'brief' || item.key !== 'output'))
 const knowledgeOptions = computed(() => [...knowledgeLibrary, ...flow.value.knowledge.filter(item => !knowledgeLibrary.some(known => known.id === item.id))])
 const waitingFor = computed(() => {
   if (ignoredTask.value)
     return '本次审核事项已忽略，不会进入后续执行；来源诊断记录仍保留。'
+  if (props.task.completionOutcome === 'expired-unexecuted')
+    return '本任务已因新一轮监测开始而超时关闭；未执行优化，不能继续处理。'
+  if (props.serviceMode === 'agent' && props.task.progress === 'running' && customerRevisionRequests.value > 0)
+    return `Agent 正在根据客户第${customerRevisionRequests.value}次修改意见继续优化。`
   if (props.task.type === 'repair' && props.task.progress === 'site_running')
     return '技术修复已提交官网，等待官网返回处理结果；状态以官网服务回传为准。'
   if (automatic.value)
@@ -262,8 +346,10 @@ const actionbarTitle = computed(() => {
 const actionbarDescription = computed(() => {
   if (ignoredTask.value)
     return `已忽略「${ignoredTask.value.stageLabel}」：${ignoredTask.value.reason}。本任务不再进入后续执行。`
+  if (props.task.completionOutcome === 'expired-unexecuted')
+    return '未执行优化。本任务已超出处理时限并关闭，不能继续处理。'
   if (customerFinalReview.value)
-    return '请确认文案结果；需要修改时直接点击正文编辑，保存后再确认。'
+    return props.serviceMode === 'managed' ? `请确认最新文案；如需修改，可填写意见退回专家继续优化（最多 3 次，已使用 ${customerRevisionRequests.value} 次）。` : '请确认文案结果；需要修改时可直接编辑正文。'
   if (operationsWaitingForClientReview.value)
     return '专家已审核通过，当前等待客户查看最新保存版本并确认最终稿。'
   if (operationsContentReview.value)
@@ -314,17 +400,24 @@ function ignoreCurrentTask() {
     ignoredExplanation.value = ''
   }
 }
+function warnUnsavedContent() {
+  validationToastVariant.value = 'warning'
+  validationToastMessage.value = '请确认已保存修改内容'
+  validationToastMessageId.value += 1
+  validationToastOpen.value = true
+}
+function backToOptimization() {
+  if (hasUnsavedContent.value) return warnUnsavedContent()
+  emit('back')
+}
 function confirmTask() {
   if (!editableBrief.value) {
     error.value = '当前角色不能确认待确认的 Brief。'
     return
   }
-  if (!editableBrief.value) {
-    error.value = '当前阶段不能确认任务。'
-    return
-  }
   if (gate.value.length) {
     if (gate.value.includes('选择知识资料、填写补充说明或勾选联网补充')) {
+      validationToastVariant.value = 'error'
       validationToastMessage.value = '请选择知识资料、填写补充说明或勾选联网补充'
       validationToastMessageId.value += 1
       validationToastOpen.value = true
@@ -333,6 +426,11 @@ function confirmTask() {
     openEditor('brief')
     return
   }
+  const saved = saveBriefDraft()
+  if (saved && act('confirm_brief'))
+    message.value = ''
+}
+function saveBriefDraft() {
   const saved = act('save_brief', {
     brief: {
       ...flow.value.brief,
@@ -342,8 +440,10 @@ function confirmTask() {
     methods: [...props.task.methods],
     knowledge: flow.value.knowledge.map(item => ({ ...item })),
   })
-  if (saved && act('confirm_brief'))
-    message.value = ''
+  if (saved) {
+    persistLocalDraft()
+  }
+  return saved
 }
 function saveWebSupplementSetting() {
   if (editableBrief.value)
@@ -369,6 +469,11 @@ function openEditor(kind: Exclude<NonNullable<typeof drawer.value>, 'upload'>) {
   draft.body = flow.value.output.body
   drawer.value = kind
 }
+function requestAgentRevision() {
+  if (!saveInlineOutput()) return
+  if (!canRequestAgentRevision.value) return
+  openEditor('feedback')
+}
 function toggleMethod(method: string) {
   draft.methods = draft.methods.includes(method) ? draft.methods.filter(item => item !== method) : [...draft.methods, method]
 }
@@ -392,17 +497,19 @@ function saveDrawer() {
     act('retry_site', { note: note.value, simulateFailure: simulateFailure.value })
   }
   else {
-    act(props.task.progress === 'brief' ? 'request_brief_changes' : 'request_output_changes', { note: note.value })
+    act(props.task.progress === 'brief' ? 'request_brief_changes' : props.task.progress === 'site_publish' ? 'request_preview_changes' : 'request_output_changes', { note: note.value })
   }
 }
 function saveInlineOutput() {
   if (!outputDirty.value)
     return true
-  return act('save_output', { title: draft.title, body: draft.body })
-}
-function submitOutputFeedback() {
-  if (!saveInlineOutput()) return
-  openEditor('feedback')
+  const saved = act('save_output', { title: draft.title, body: draft.body })
+  if (saved) {
+    draft.title = flow.value.output.title
+    draft.body = flow.value.output.body
+    persistLocalDraft()
+  }
+  return saved
 }
 function approveReview() {
   if (!saveInlineOutput()) return
@@ -429,7 +536,7 @@ function versionDiff(index: number) {
     <div class="tw-task-detail" :class="{ 'is-brief': task.progress === 'brief' }">
       <section class="tw-overview" aria-label="任务信息">
         <div class="tw-topline">
-          <Button class="tw-back-button" variant="text" @click="emit('back')">
+          <Button class="tw-back-button" variant="text" @click="backToOptimization">
             <AppIcon name="arrowLeft" :size="14" aria-hidden="true" /> 返回优化中心
           </Button>
         </div>
@@ -437,23 +544,22 @@ function versionDiff(index: number) {
           <div class="tw-title-block">
             <div class="tw-title-line">
               <h1>{{ task.name }}</h1>
+              <span class="tw-count-badge" :aria-label="`任务序号 ${task.id}`">{{ task.id }}</span>
               <template v-if="task.type === 'repair'">
                 <Tag :tone="siteStatus.tone" size="sm">
                   {{ siteStatus.label }}
                 </Tag>
-              </template>
-              <template v-else>
-                <span class="tw-count-badge" :aria-label="task.progress === 'brief' ? `任务序号 ${briefTaskNumber}` : `${task.methods.length} 项执行方法`">
-                  {{ task.progress === 'brief' ? briefTaskNumber : task.methods.length }}
-                </span>
-                <Tag v-if="task.progress !== 'brief'" tone="blue" size="sm">
-                  {{ taskContextLabel }}
+                <Tag v-if="taskPriority" :tone="taskPriority === 'P0' ? 'red' : 'blue'" size="sm">
+                  {{ taskPriority }}
                 </Tag>
               </template>
+              <template v-else>
+                <Tag v-if="taskPriority" :tone="taskPriority === 'P0' ? 'red' : 'blue'" size="sm">
+                  {{ taskPriority }}
+                </Tag>
+              </template>
+              <Tag class="tw-task-id" tone="blue" size="sm">{{ taskSubtitle }}</Tag>
             </div>
-            <p class="tw-task-id">
-              {{ taskSubtitle }}
-            </p>
           </div>
           <div class="tw-header-actions">
             <div v-if="task.type !== 'repair' && serviceMode === 'managed'" class="tw-role-test" data-test="workflow-role-switch">
@@ -477,18 +583,9 @@ function versionDiff(index: number) {
                 </Button>
               </div>
             </div>
-            <Button v-if="task.type !== 'repair'" class="tw-permission-help" variant="secondary" data-test="open-permissions" @click="permissionDrawerOpen = true">
-              权限说明
-            </Button>
           </div>
         </header>
-        <TaskProgressTimeline :steps="flowSteps" :title="task.type === 'repair' ? undefined : task.type === 'external' ? '外部内容执行流程' : '官网任务执行流程'">
-          <template v-if="task.type !== 'repair'" #action>
-            <Button variant="text" data-test="open-full-flow" @click="routeContext.openFlow('optimization')">
-              查看完整流程与角色分工 <AppIcon name="arrowRight" :size="14" aria-hidden="true" />
-            </Button>
-          </template>
-        </TaskProgressTimeline>
+        <TaskProgressTimeline :steps="flowSteps" :title="task.type === 'repair' ? undefined : task.type === 'external' ? '外部内容执行流程' : '官网任务执行流程'" />
       </section>
       <section class="tw-content-panel" aria-label="任务执行内容">
         <section v-if="task.executionKind === 'verification' && task.progress !== 'brief'" class="tw-card">
@@ -498,11 +595,12 @@ function versionDiff(index: number) {
             <option value="add-content">有能力，官网未介绍</option><option value="edit-content">已有介绍，表达不明确</option><option value="technical">内容完整，存在读取障碍</option><option value="external">需要补充第三方来源</option><option value="business-gap">实际不具备该能力</option>
           </select></label>
           <label class="tw-field">核查记录<textarea v-model="draft.body" :readonly="task.progress === 'done'" rows="7" placeholder="记录核查资料、发现的原因和后续处理建议" /></label>
+          <Button v-if="task.progress !== 'done'" variant="secondary" :disabled="draft.body === flow.output.body" @click="saveVerificationDraft">保存核查草稿</Button>
           <Button :disabled="!draft.body.trim() || !task.verificationOutcome || task.progress === 'done'" @click="completeVerification">保存核查结论并完成</Button>
           <p v-if="task.progress === 'done'">核查已完成。内容类结论已进入后续策略审核；技术问题进入直接处理；业务能力缺口仅记录。</p>
           <Button v-if="task.verificationFollowupId" @click="openVerificationFollowup">查看后续处理</Button>
         </section>
-        <p v-if="task.executionKind !== 'verification' && automatic && serviceMode === 'agent' && task.type !== 'repair'" class="tw-card" role="status">AI 正在处理，请稍候…</p>
+        <p v-if="task.executionKind !== 'verification' && automatic && serviceMode === 'agent' && task.type !== 'repair'" class="tw-card" role="status">{{ task.progress === 'running' && customerRevisionRequests > 0 ? `Agent 正在按客户第${customerRevisionRequests}次修改意见继续优化，请稍候…` : 'AI 正在处理，请稍候…' }}</p>
         <template v-if="task.type === 'repair'">
           <TaskRepairDetail :task="task" :site="flow.site" :status-label="siteStatus.label" :status-tone="siteStatus.tone" />
           <section v-if="serviceMode === 'agent' && !isDirectRepairTask(task)" class="tw-card" aria-label="修复操作">
@@ -554,16 +652,16 @@ function versionDiff(index: number) {
                   <dl class="tw-brief" :class="{ 'tw-brief--table': task.progress === 'brief', 'tw-brief--audit-content': auditContent }">
                     <template v-if="auditContent">
                       <template v-if="task.progress === 'brief'">
-                        <div class="tw-brief-summary__item"><dt>异常说明</dt><dd>{{ auditContent.abnormality }}</dd></div>
-                        <div class="tw-brief-summary__item"><dt>修改前的内容</dt><dd>{{ auditContent.originalContent || '尚未采集修改前的官网原文' }}</dd></div>
+                        <div class="tw-brief-summary__item is-primary"><dt>问题与依据</dt><dd>{{ auditContent.abnormality }}</dd></div>
+                        <div class="tw-brief-summary__item is-before"><dt>修改范围</dt><dd>{{ auditModificationScope }}</dd></div>
                       </template>
                       <template v-else>
-                        <dt>异常说明</dt><dd>{{ auditContent.abnormality }}</dd>
-                        <dt>修改前的内容</dt><dd>{{ auditContent.originalContent || '尚未采集修改前的官网原文' }}</dd>
+                        <dt>问题与依据</dt><dd>{{ auditContent.abnormality }}</dd>
+                        <dt>修改范围</dt><dd>{{ auditModificationScope }}</dd>
                       </template>
                     </template>
                     <template v-for="field in auditContent ? [] : briefFields" :key="field.key">
-                      <div v-if="task.progress === 'brief'" class="tw-brief-summary__item">
+                      <div v-if="task.progress === 'brief'" class="tw-brief-summary__item" :class="{ 'is-primary': field.key === 'goal' }">
                         <dt>{{ field.label }}</dt>
                         <dd>{{ flow.brief[field.key] }}</dd>
                       </div>
@@ -577,8 +675,8 @@ function versionDiff(index: number) {
                   <header class="tw-content-basis__head">
                     <div>
                       <h3 id="tw-content-basis-title">
-                        内容依据
-                      </h3><p>AI 优先使用已有知识，再补充缺少的信息。</p>
+                        确认内容依据
+                      </h3><p>AI 先从您的知识库中检索与当前任务相关的资料，供 AI 生成内容时参考。知识库资料的准确性、完整度和更新情况会影响生成结果；资料不足或过期时，内容可能缺少关键细节，或需要更多人工核对与修改。</p>
                     </div>
                     <span class="tw-content-basis__summary">AI 已匹配 {{ flow.knowledge.length }} 份知识{{ webSupplement ? ' + 联网补充' : '' }}</span>
                   </header>
@@ -589,7 +687,7 @@ function versionDiff(index: number) {
                         <Tag v-for="item in flow.knowledge" :key="item.id" tone="blue">
                           {{ item.title }}
                         </Tag>
-                        <span v-if="!flow.knowledge.length" class="tw-content-basis__empty">暂未匹配知识资料</span>
+                        <span v-if="!flow.knowledge.length" class="tw-content-basis__empty">在您的知识库没有检索到相关资料</span>
                       </div>
                     </div>
                     <div class="tw-content-basis__line">
@@ -640,7 +738,7 @@ function versionDiff(index: number) {
                 <div class="tw-brief-confirm__copy">
                   <strong v-if="(role === 'client' && serviceMode === 'managed') || clientPreview || flow.briefStatus !== 'ready'" class="tw-brief-confirm__eyebrow">{{ role === 'client' || clientPreview ? '客户视图预览' : taskStageLabel(task, serviceMode) }}</strong>
                   <h3 v-if="flow.briefStatus === 'ready'">
-                    Task 草稿 · Brief 确认
+                    Brief 确认
                   </h3>
                   <p v-if="role === 'client' || flow.briefStatus !== 'ready'">
                     {{ serviceMode === 'agent' ? '请补充资料或说明，确认后由 AI 生成内容。' : role === 'client' ? 'Brief 由专家维护并确认。此页面仅展示任务目标、范围与依据，不提供编辑操作。' : waitingFor }}
@@ -653,6 +751,7 @@ function versionDiff(index: number) {
                   </p>
                 </div>
                 <div v-if="editableBrief && flow.briefStatus === 'ready'" class="tw-actions">
+                  <Button variant="secondary" data-test="save-brief-draft" :disabled="!briefDirty" @click="saveBriefDraft">保存</Button>
                   <Button class="tw-ignore-action" variant="secondary" data-test="ignore-task" :disabled="!canIgnoreCurrentStep" :title="canIgnoreCurrentStep ? undefined : `当前步骤由${ignoreOwner(task, serviceMode) === 'ops' ? '专家' : '客户'}负责`" @click="drawer = 'ignore'">
                     忽略
                   </Button>
@@ -670,47 +769,23 @@ function versionDiff(index: number) {
               <template v-if="flow.output.body">
                 <div class="tw-output-review-layout">
                   <div class="tw-output-review-main">
-                    <TaskRichTextEditor v-model="draft.body" :editable="reviewing" :ai-optimize="contentReviewVisible" :ai-calls-remaining="aiCallsRemaining" :full-width="true" :heading="flow.output.title" label="生成内容正文编辑器" @ai-call="consumeAiCall">
-                      <template #supplement>
-                        <section class="tw-internet-supplement" data-test="internet-supplement" aria-label="AI 联网内容状态">
-                          <header class="tw-internet-supplement__head">
-                            <div class="tw-internet-supplement__title">
-                              <h3>AI 联网内容</h3>
-                              <span class="tw-internet-supplement__count">2 处待确认</span>
-                              <span class="tw-internet-supplement__help-wrap">
-                                <button class="tw-internet-supplement__help" type="button" aria-label="联网内容说明" aria-describedby="internet-supplement-help">?</button>
-                                <span id="internet-supplement-help" class="tw-internet-supplement__tooltip" role="tooltip">联网内容已在正文中标色。产品参数、认证、价格、交期等关键事实确认后才能发布。</span>
-                              </span>
-                            </div>
-                            <div class="tw-internet-supplement__filters" aria-label="内容筛选预览">
-                              <span class="is-active">全部 <b>2</b></span>
-                              <span>AI 联网</span>
-                              <span>待确认</span>
-                            </div>
-                          </header>
-                          <ul class="tw-internet-supplement__items">
-                            <li>
-                              <span class="tw-internet-supplement__kind">关键事实</span>
-                              <span class="tw-internet-supplement__text">日本本地服务覆盖区域与响应时效</span>
-                              <span class="tw-internet-supplement__source">演示来源 · 待接入</span>
-                              <span class="tw-internet-supplement__status">待确认</span>
-                            </li>
-                            <li>
-                              <span class="tw-internet-supplement__kind">关键事实</span>
-                              <span class="tw-internet-supplement__text">代理合作的适用范围、职责边界与服务内容</span>
-                              <span class="tw-internet-supplement__source">演示来源 · 待接入</span>
-                              <span class="tw-internet-supplement__status">待确认</span>
-                            </li>
-                          </ul>
-                          <p class="tw-internet-supplement__demo-note">
-                            样式预览：当前展示示例条目，尚未连接真实联网检索。
-                          </p>
-                        </section>
-                      </template>
-                    </TaskRichTextEditor>
+                    <TaskRichTextEditor v-model="draft.body" :editable="outputEditable" :ai-optimize="contentReviewVisible || task.progress === 'site_failed'" :ai-calls-remaining="aiCallsRemaining" :external-claims="flow.output.externalClaims || []" :can-confirm-external-claims="role === 'client'" :full-width="true" :heading="flow.output.title" label="生成内容正文编辑器" @ai-call="consumeAiCall" @confirm-external-claim="confirmExternalClaim" />
                   </div>
-                  <TaskReviewInsights v-if="contentReviewVisible" />
+                  <div v-if="finalQualityVisible || (task.type === 'web' && task.progress === 'site_publish')" class="tw-output-review-sidebar">
+                    <TaskReviewInsights v-if="finalQualityVisible" />
+                    <div v-if="task.type === 'web' && task.progress === 'site_publish'" class="tw-site-preview-state">
+                      <div><strong>发布内容预览已就绪</strong><span>{{ flow.site.preview || `Preview V${flow.output.revision}` }}</span><small>请打开官网返回的预览页面。确认发布前不会影响线上内容。</small></div>
+                      <a class="tw-preview-link" :href="previewHref" target="_blank" rel="noopener noreferrer">打开发布内容预览</a>
+                    </div>
+                  </div>
                 </div>
+                <section v-if="task.type === 'web' && ['site_submit', 'site_submitted', 'site_running', 'site_verifying', 'site_failed', 'site_publish', 'publish', 'recheck', 'done'].includes(task.progress)" class="tw-site-feedback" :class="{ 'is-failed': task.progress === 'site_failed', 'is-ready': task.progress === 'site_publish' }" aria-label="官网检测反馈">
+                  <header><div><span>官网检测反馈</span><h3>{{ task.progress === 'site_failed' ? '官网检测未通过' : task.progress === 'site_publish' ? '检测通过，可打开预览链接并确认发布' : '官网检测与发布状态' }}</h3></div><Tag :tone="task.progress === 'site_failed' ? 'red' : task.progress === 'site_publish' ? 'green' : 'blue'">{{ siteStatus.label }}</Tag></header>
+                  <p>{{ flow.site.result || '执行包已进入官网检测流程，结果返回后会在这里显示。' }}</p>
+                  <p v-if="task.completionOutcome === 'expired-unexecuted'" class="tw-site-feedback__advice"><strong>未执行优化</strong><span>新一轮监测生成时，本任务仍未提交官网，已按时限关闭。</span></p>
+                  <p v-if="task.progress === 'done' && flow.url" class="tw-site-return-link"><strong>官网更新页面：</strong><a :href="flow.url" target="_blank" rel="noopener noreferrer">{{ flow.url }}</a></p>
+                  <div v-if="task.progress === 'site_failed'" class="tw-site-feedback__advice"><strong>返回建议</strong><span>请根据检测结果修改正文，保存后将重新执行内容优化、七项质检与最终稿确认。</span></div>
+                </section>
               </template><p v-else class="tw-empty">
                 确认 Brief 后，Agent 将自动生成本任务产物。
               </p>
@@ -723,16 +798,16 @@ function versionDiff(index: number) {
                 </Tag>
               </div>
               <dl class="tw-brief">
-                <dt>执行目标</dt><dd>{{ flow.brief.scope }}</dd><dt>交付产物</dt><dd>{{ flow.output.title }} · V{{ flow.output.revision }}</dd><dt>执行要求</dt><dd>{{ flow.site.requirements || '客户确认产物后生成执行包。' }}</dd><dt>验收条件</dt><dd>{{ flow.brief.acceptance }}</dd><dt>预览版本</dt><dd>{{ flow.site.preview || '等待模拟建站回传' }}</dd><dt>验证结果</dt><dd>{{ flow.site.result || '尚未验证' }}</dd><dt>发布 URL</dt><dd><a v-if="flow.url" :href="flow.url" target="_blank" rel="noopener noreferrer">{{ flow.url }}</a><span v-else>待客户登记</span></dd>
+                <dt>执行目标</dt><dd>{{ flow.brief.scope }}</dd><dt>交付产物</dt><dd>{{ flow.output.title }} · V{{ flow.output.revision }}</dd><dt>执行要求</dt><dd>{{ flow.site.requirements || '客户确认产物后生成执行包。' }}</dd><dt>验收条件</dt><dd>{{ flow.brief.acceptance }}</dd><dt>预览链接</dt><dd><a v-if="flow.site.preview" :href="previewHref" target="_blank" rel="noopener noreferrer">打开 {{ flow.site.preview }}</a><span v-else>等待官网回传</span></dd><dt>检测结果</dt><dd>{{ flow.site.result || '尚未检测' }}</dd>
               </dl>
               <details v-if="flow.site.preview" class="tw-resource">
-                <summary>查看执行预览 / Diff（模拟）</summary><p>原执行对象：{{ flow.brief.scope }}</p><p>拟应用变更：{{ task.methods.join('、') }}</p><pre class="tw-output">{{ flow.output.body }}</pre>
+                <summary>查看本次执行 Diff</summary><p>执行对象：{{ flow.brief.scope }}</p><p>本次内容变更：{{ task.methods.join('、') }}</p><p>正文版本：V{{ flow.output.revision }}。完整正文请通过上方预览链接查看。</p>
               </details>
               <label v-if="siteOwner && ['site_submit', 'site_failed'].includes(task.progress)" class="tw-check"><input v-model="simulateFailure" type="checkbox"> 本次演示模拟验证失败（用于验证调整与重试流程）</label>
             </section>
 
             <section v-else-if="tab === 'versions'" class="tw-card">
-              <h2>版本 / Diff</h2><p class="tw-muted">
+              <h2>版本</h2><p class="tw-muted">
                 历史快照只读。确认后的执行基线不会被后续编辑覆盖。
               </p><details v-for="(version, index) in flow.versions" :key="version.version" class="tw-version">
                 <summary>V{{ version.version }} · {{ version.note }}<small>{{ new Date(version.time).toLocaleString() }}</small></summary><p class="tw-feedback">
@@ -740,7 +815,7 @@ function versionDiff(index: number) {
                 </p><dl class="tw-brief">
                   <template v-for="field in auditContent ? [] : briefFields" :key="field.key">
                     <dt>{{ field.label }}</dt><dd>{{ version.brief[field.key] }}</dd>
-                  </template><template v-if="auditContent"><dt>异常说明</dt><dd>{{ auditContent.abnormality }}</dd><dt>修改前的内容</dt><dd>{{ auditContent.originalContent || '尚未采集修改前的官网原文' }}</dd></template><dt>执行方法</dt><dd>{{ version.methods.join('、') || '未选择' }}</dd><dt>知识资料</dt><dd>{{ version.knowledge.map(item => item.title).join('、') || '未关联' }}</dd>
+                  </template><template v-if="auditContent"><dt>问题与依据</dt><dd>{{ auditContent.abnormality }}</dd><dt>修改范围</dt><dd>{{ auditModificationScope }}</dd></template><dt>执行方法</dt><dd>{{ version.methods.join('、') || '未选择' }}</dd><dt>知识资料</dt><dd>{{ version.knowledge.map(item => item.title).join('、') || '未关联' }}</dd>
                 </dl><pre v-if="version.output" class="tw-output">{{ version.output }}</pre>
               </details>
             </section>
@@ -775,45 +850,43 @@ function versionDiff(index: number) {
           忽略
         </Button>
         <template v-if="reviewing">
-          <Button v-if="operationsContentReview" variant="secondary" data-test="save-inline-output" :disabled="!outputDirty" @click="saveInlineOutput">
+          <Button v-if="outputEditable" variant="secondary" data-test="save-inline-output" :disabled="!outputDirty" @click="saveInlineOutput">
             保存正文
           </Button>
-          <Button v-if="serviceMode !== 'agent' && !operationsContentReview && !customerFinalReview" variant="secondary" :data-test="task.progress === 'client_content_review' ? 'request-output-feedback' : undefined" @click="submitOutputFeedback">
-            提交修改意见
+          <Button v-if="canRequestAgentRevision" variant="secondary" data-test="request-agent-revision" @click="requestAgentRevision">
+            退回专家修改（还可提 {{ 3 - customerRevisionRequests }} 次）
           </Button>
+          <span v-else-if="props.serviceMode === 'managed' && props.task.type === 'web' && customerFinalReview" class="tw-revision-limit" role="status">
+            已达到 3 次修改上限
+          </span>
           <Button variant="primary" @click="approveReview">
-            {{ operationsContentReview ? '专家审核通过，交客户确认' : role === 'ops' ? '审核通过，交客户确认' : '客户确认文案结果' }}
+            {{ operationsContentReview ? '专家审核通过，交客户确认' : role === 'ops' ? '审核通过，交客户确认' : '客户确认最终稿' }}
           </Button>
         </template>
         <Button v-if="siteOwner && task.progress === 'site_submit'" @click="act('submit_site', { simulateFailure })">
           提交 AI 建站
         </Button>
-        <Button v-if="siteOwner && task.progress === 'site_failed'" @click="openEditor('retry')">
-          补充要求并重新提交
+        <Button v-if="siteOwner && task.progress === 'site_failed'" variant="primary" :disabled="!outputDirty" @click="saveInlineOutput">
+          保存修改并重新质检
         </Button>
         <Button v-if="role === 'ops' && task.progress === 'site_publish'" variant="secondary" disabled data-test="publish-waiting">
           等待客户发布确认
         </Button>
         <template v-if="role === 'client' && ['site_publish', 'publish'].includes(task.progress)">
-          <template v-if="!publishPromptDismissed">
-            <Button variant="secondary" data-test="dismiss-publish" @click="publishPromptDismissed = true">
-              稍后确认
-            </Button><Button data-test="confirm-publish" @click="act('publish')">
-              确认发布上线
-            </Button>
-          </template>
-          <span v-else class="tw-actionbar__dismissed" role="status">已暂缓，任务仍等待客户确认发布上线。</span>
+          <Button variant="secondary" data-test="request-preview-changes" @click="openEditor('feedback')">要求修改</Button>
+          <label class="tw-field tw-publish-url">官网返回的更新页面链接<input v-model="publishUrl" type="url" placeholder="https://example.com/updated-page" autocomplete="url"></label>
+          <Button data-test="confirm-publish" :disabled="!validPublishUrl(publishUrl)" @click="act('publish', { url: publishUrl })">确认完成并保存链接</Button>
         </template>
         <Button v-if="task.progress === 'recheck'" data-test="complete-recheck" @click="act('complete_recheck')">
           完成本次官网核验
         </Button>
-        <Button v-if="task.progress === 'done' || ignoredTask" variant="primary" data-test="return-optimization" @click="emit('back')">
+        <Button v-if="task.progress === 'done' || ignoredTask" variant="primary" data-test="return-optimization" @click="backToOptimization">
           返回优化中心
         </Button>
       </div>
     </section>
 
-    <Drawer :open="drawer !== null && drawer !== 'upload'" :class="drawer === 'ignore' ? 'tw-ignore-drawer' : undefined" :eyebrow="drawer === 'ignore' ? `${task.name} · ${task.progress === 'brief' ? 'Task Brief 确认' : taskStageLabel(task, serviceMode)}` : undefined" :title="drawer === 'ignore' ? '忽略本次审核事项' : drawer === 'brief' ? '编辑 Brief 与执行方法' : drawer === 'knowledge' ? '知识资料准备' : drawer === 'output' ? '编辑任务产物' : drawer === 'retry' ? '补充要求并重新提交' : '提出调整意见'" :size="560" close-label="关闭编辑" @close="closeDrawer">
+    <Drawer :open="drawer !== null && drawer !== 'upload'" :class="drawer === 'ignore' ? 'tw-ignore-drawer' : undefined" :eyebrow="drawer === 'ignore' ? `${task.name} · ${task.progress === 'brief' ? 'Task Brief 确认' : taskStageLabel(task, serviceMode)}` : undefined" :title="drawer === 'ignore' ? '忽略本次审核事项' : drawer === 'brief' ? '编辑 Brief 与执行方法' : drawer === 'knowledge' ? '知识资料准备' : drawer === 'output' ? '编辑任务产物' : drawer === 'retry' ? '补充要求并重新提交' : task.progress === 'site_publish' ? '发布预览修改要求' : customerFinalReview && serviceMode === 'managed' ? '退回专家修改' : '提出调整意见'" :size="560" close-label="关闭编辑" @close="closeDrawer">
       <div v-if="drawer === 'ignore'" class="tw-ignore-form">
         <p class="tw-ignore-warning">
           忽略后，本次审核事项不再进入后续执行，也不会从待处理中重复出现；来源诊断仍保留，官网异常不会因此变为通过。提交后不可恢复。
@@ -832,7 +905,7 @@ function versionDiff(index: number) {
       </div>
       <div v-else class="tw-editor">
         <template v-if="drawer === 'brief'">
-          <template v-if="auditContent"><div class="tw-field"><strong>异常说明</strong><p>{{ auditContent.abnormality }}</p></div><div class="tw-field"><strong>修改前的内容</strong><p>{{ auditContent.originalContent || '尚未采集修改前的官网原文' }}</p></div></template>
+          <template v-if="auditContent"><div class="tw-field"><strong>问题与依据</strong><p>{{ auditContent.abnormality }}</p></div><div class="tw-field"><strong>修改范围</strong><p>{{ auditModificationScope }}</p></div></template>
           <label v-for="field in auditContent ? [] : briefFields" :key="field.key" class="tw-field">{{ field.label }}<textarea v-model="draft.brief[field.key]" rows="3" /></label><fieldset class="tw-methods">
             <legend>执行方法 · 至少选择一项</legend><label v-for="method in [...new Set([...methodOptions, ...draft.methods])]" :key="method" class="tw-check"><input type="checkbox" :checked="draft.methods.includes(method)" @change="toggleMethod(method)">{{ method }}</label>
           </fieldset><div class="tw-inline">
@@ -856,7 +929,7 @@ function versionDiff(index: number) {
           <label class="tw-field">产物标题<input v-model="draft.title"></label><label class="tw-field">产物正文<TaskRichTextEditor v-model="draft.body" label="编辑产物正文" /></label>
         </template>
         <template v-else>
-          <p>原版本与调整记录会保留，可在版本 / Diff 和协作记录中追溯。</p><label class="tw-field">{{ drawer === 'retry' ? '补充要求与修正说明' : '调整意见' }}<textarea v-model="note" rows="8" placeholder="请说明范围、事实、内容或交付要求需要如何调整" /></label><label v-if="drawer === 'retry'" class="tw-check"><input v-model="simulateFailure" type="checkbox"> 本次演示继续模拟验证失败</label>
+          <p v-if="drawer === 'feedback' && customerFinalReview && serviceMode === 'managed'">原版本、修改次数与意见会保留在审核记录中。本任务最多退回专家修改 3 次（已使用 {{ customerRevisionRequests }} 次）。</p><label class="tw-field">{{ drawer === 'retry' ? '补充要求与修正说明' : customerFinalReview && serviceMode === 'managed' ? '修改意见（必填）' : '调整意见' }}<textarea v-model="note" rows="8" placeholder="请具体说明需要调整的段落、事实依据、表达方式或范围" /></label><label v-if="drawer === 'retry'" class="tw-check"><input v-model="simulateFailure" type="checkbox"> 本次演示继续模拟验证失败</label>
         </template>
         <p v-if="error" role="alert" class="tw-error">
           {{ error }}
@@ -867,18 +940,16 @@ function versionDiff(index: number) {
           取消
         </Button><Button v-if="drawer === 'ignore'" variant="primary" data-test="confirm-ignore" :disabled="!ignoredReason || !ignoredExplanation.trim()" @click="ignoreCurrentTask">
           确认忽略
-        </Button><Button v-else @click="saveDrawer">
-          {{ drawer === 'feedback' ? '提交调整意见' : drawer === 'retry' ? '重新提交（模拟）' : '保存修改' }}
+        </Button><Button v-else :disabled="drawer === 'feedback' && !note.trim()" @click="saveDrawer">
+          {{ drawer === 'feedback' && customerFinalReview && serviceMode === 'managed' ? '提交意见并退回专家' : drawer === 'feedback' && task.progress === 'site_publish' ? '提交修改要求' : drawer === 'feedback' ? '提交调整意见' : drawer === 'retry' ? '重新提交（模拟）' : '保存修改' }}
         </Button>
       </template>
     </Drawer>
     <KnowledgeUploadDrawer :open="drawer === 'upload'" :task-id="task.id" @close="drawer = null" @submitted="handleUploadSubmitted" />
-    <TaskPermissionsDrawer :service-mode="serviceMode" :open="permissionDrawerOpen" @close="permissionDrawerOpen = false" />
-    <Toast :open="validationToastOpen" :message-id="validationToastMessageId" variant="error" close-label="关闭提示" @close="validationToastOpen = false">
+    <Toast :open="validationToastOpen" :message-id="validationToastMessageId" :variant="validationToastVariant" close-label="关闭提示" @close="validationToastOpen = false">
       {{ validationToastMessage }}
     </Toast>
   </main>
 </template>
 
 <style src="../../styles/task-workspace.css" />
-

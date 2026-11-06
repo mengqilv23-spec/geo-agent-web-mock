@@ -1,7 +1,7 @@
 import type { AuditFinding, GeoTask } from '../data/geo-data'
 
 export function isDirectRepairFinding(finding: AuditFinding) {
-  return finding.route === 'repair' && finding.id !== 'F9'
+  return (finding.treatment ?? (finding.route === 'repair' ? 'website-tech-direct' : undefined)) === 'website-tech-direct'
 }
 
 export function isDirectRepairTask(task: GeoTask) {

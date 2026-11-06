@@ -199,7 +199,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 :global([data-geo-guide-target]) { scroll-margin-top: 88px; scroll-margin-bottom: 16px; }
-.geo-guide-launcher { position: fixed; right: 24px; bottom: 24px; z-index: 80; display: inline-flex; align-items: center; gap: 7px; padding: 10px 15px; border: 1px solid var(--border-default); border-radius: 999px; background: var(--background-primary); color: var(--action-accent); box-shadow: 0 4px 18px #24245112; font: inherit; cursor: pointer; }
+.geo-guide-launcher { position: fixed; top: 13px; right: 190px; z-index: 80; display: inline-flex; min-height: 38px; align-items: center; gap: 7px; padding: 8px 13px; border: 1px solid var(--border-default); border-radius: 999px; background: var(--background-primary); color: var(--action-accent); box-shadow: 0 2px 10px #2424510d; font: inherit; cursor: pointer; }
 .geo-guide-launcher > span { display: grid; width: 18px; height: 18px; place-items: center; border: 1.5px solid currentColor; border-radius: 50%; font-size: 12px; font-weight: 600; }
 .geo-guide-layer { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; overflow: hidden; background: transparent; color: var(--text-primary); pointer-events: none; z-index: 10000; }
 .geo-guide-highlight { position: fixed; box-sizing: border-box; border: 2px solid var(--action-accent); border-radius: 12px; box-shadow: 0 0 0 9999px #181a3038; pointer-events: none; }
@@ -217,5 +217,6 @@ onBeforeUnmount(() => {
 .geo-guide-skip, .geo-guide-retry { border: 0; color: var(--action-accent); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
 .geo-guide-skip { margin-right: auto; color: var(--text-secondary); }
 button:focus-visible, select:focus-visible { outline: 2px solid var(--action-accent); outline-offset: 3px; }
-@media (max-width: 680px) { .geo-guide-launcher { right: 16px; bottom: 16px; } }
+@media (max-width: 680px) { .geo-guide-launcher { top: 13px; right: 112px; padding-inline: 10px; } }
+@media (max-width: 520px) { .geo-guide-launcher { right: 72px; width: 38px; padding: 0; justify-content: center; } .geo-guide-launcher > span { flex: none; } .geo-guide-launcher { font-size: 0; } }
 </style>

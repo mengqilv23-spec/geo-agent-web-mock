@@ -13,14 +13,14 @@ import GeoDrawer from '../components/workbench/shared/GeoDrawer.vue'
 import PrioritySelect from '../components/workbench/shared/PrioritySelect.vue'
 import GeoWorkbenchToolbar from '../components/workbench/shared/GeoWorkbenchToolbar.vue'
 import { geoWorkbenchRouteContextKey } from '../composables/workbench-route-context'
-import { auditChecks, auditFindings, clientContentReviewFindings, supplementalBriefFindings, baselineMetrics, cloneGeoTask, displayObjectCodes, filterTasks, initialTasks, officialContentSnapshot, personas, prototypeTasks, strategies } from '../data/geo-data'
+import { auditChecks, auditFindings, clientContentReviewFindings, supplementalBriefFindings, baselineMetrics, cloneGeoTask, displayObjectCodes, filterTasks, initialTasks, officialContentSnapshot, personas, prototypeTasks, strategies, taskStatusExamples } from '../data/geo-data'
 import { createRepairTask, orchestrateStrategy } from '../services/geo-orchestration'
 import { useWorkbenchTasksStore } from '../stores/workbench-tasks'
-import { pendingReviewLabel, strategyReviewStatus } from '../workflows/review-status'
-import { findingHasTask, findingRouteLabel, isAdviceFinding, isKnowledgeFinding, isReadOnlyFinding } from '../workflows/finding-treatment'
-import { directRepairStatus, isDirectRepairFinding, isDirectRepairTask } from '../workflows/direct-repair'
+import { strategyReviewStatus } from '../workflows/review-status'
+import { findingHasTask, findingRouteLabel, findingStatusLabel as resolveFindingStatusLabel, findingTreatment, isAdviceFinding, isKnowledgeFinding, isReadOnlyFinding } from '../workflows/finding-treatment'
+import { isDirectRepairFinding, isDirectRepairTask } from '../workflows/direct-repair'
 import { advanceAutomatic, ensureWorkflow, knowledgeLibrary } from '../workflows/task-workflow'
-import { normalizeClientFindings, createClientFindingTask, strategyGapEvidence, platformGapBreakdown, clientStrategyPlan, createVerificationTask } from '../workflows/client-diagnosis'
+import { normalizeClientFindings, createClientFindingTask, strategyGapEvidence, strategyCoverageGapRefs, platformGapBreakdown, clientStrategyPlan, createVerificationTask } from '../workflows/client-diagnosis'
 import type { ProcessingPage } from '../workflows/data-processing'
 import { updateDataProcessing, useDataProcessing } from '../workflows/data-processing'
 import '../styles/geo-workbench.css'
@@ -129,16 +129,16 @@ const reviewNotes = reactive<Record<string, ReviewNote[]>>({
 })
 const visibleTasks = computed(() => filterTasks(tasks, taskFilter.value))
 const pendingItems = computed(() => [
-  ...findings.filter(finding => !isReadOnlyFinding(finding) && (serviceMode.value === 'managed' ? role.value === 'client' ? finding.status === '待客户审核' : finding.status === '待处理' : finding.status === '待处理')).map(finding => ({ kind: 'audit' as const, id: finding.id, title: finding.title, status: findingStatusLabel(finding), priority: finding.priority, source: finding.check, summary: finding.detail, finding })),
-  ...strategyState.filter(strategy => canReviewStrategy(strategy)).map(strategy => ({ kind: 'strategy' as const, id: strategy.id, title: strategy.title, status: strategyStatusLabel(strategy), priority: strategy.priority, source: strategy.source, summary: strategy.evidence, strategy })),
-  ...tasks.filter(task => ['brief', 'human', 'client_review', 'publish', 'site_submit', 'site_failed', 'site_publish'].includes(task.progress)).map(task => ({ kind: 'task' as const, id: task.id, title: task.name, status: task.progress === 'brief' ? 'Brief 待确认' : task.progress === 'human' ? '待结果审核' : task.progress === 'site_submit' ? '待提交 AI 建站' : task.progress === 'site_failed' ? '验证未通过' : task.progress === 'site_publish' || task.progress === 'publish' ? '待发布确认' : '待客户审核', priority: 'P1', source: task.source, summary: '进入任务处理当前阶段。', task })),
+  ...findings.filter(finding => canApproveFinding(finding)).map(finding => ({ kind: 'audit' as const, id: finding.id, title: finding.title, status: findingStatusLabel(finding), priority: finding.priority, source: finding.check, summary: finding.detail, finding })),
+  ...strategyState.filter(strategy => canReviewStrategy(strategy)).map(strategy => ({ kind: 'strategy' as const, id: strategy.id, title: strategy.title, status: strategyStatusLabel(strategy), priority: strategy.priority, source: strategy.origin === 'buyer-coverage' ? '买家关注点与品牌表现' : `官网 GEO 体检 · ${strategy.source}`, summary: strategy.evidence, strategy })),
+  ...tasks.filter(task => ['brief', 'human', 'client_review', 'publish', 'site_submit', 'site_failed', 'site_publish'].includes(task.progress)).map(task => ({ kind: 'task' as const, id: task.id, title: task.name, status: task.progress === 'brief' ? 'Brief 待确认' : task.progress === 'human' ? '待结果审核' : task.progress === 'site_submit' ? '待提交 AI 建站' : task.progress === 'site_failed' ? '验证未通过' : task.progress === 'site_publish' || task.progress === 'publish' ? '待发布确认' : '待客户审核', priority: 'P1', source: task.origin === 'buyer-coverage' ? '买家关注点与品牌表现' : task.origin === 'geo-audit' ? `官网 GEO 体检 · ${task.source}` : task.source, summary: '进入任务处理当前阶段。', task })),
 ])
 const managedFlowSteps: Record<FlowType, Array<{ title: string, description: string }>> = {
   diagnosis: [
     { title: '监测形成诊断', description: 'Agent 根据监测、官网体检与买家 Gap 形成 Finding。' },
     { title: '判断处理出口', description: '确定性问题直接生成修复 Task；策略型问题生成候选策略；仅提供建议项无需审核或执行。' },
-    { title: '完成两级审核', description: '专家审核诊断问题与候选策略，通过后交客户审核。' },
-    { title: '进入优化中心', description: '客户审核通过后，Agent 去重并创建或关联 Task 草稿。' },
+    { title: '完成专家审核', description: '专家审核诊断问题与候选策略，并确认处理方式。' },
+    { title: '进入优化中心', description: '专家审核通过后，Agent 去重并创建或关联 Task 草稿。' },
     { title: '执行与效果回流', description: '任务发布后 Re-check，结果回写诊断与 Agent 学习。' },
   ],
   optimization: [
@@ -183,13 +183,18 @@ function snapshot(): Snapshot {
 }
 let loadedMode: ServiceMode = 'managed'
 function resetSnapshot() {
-  findings.splice(0, findings.length, ...auditFindings.map(finding => ({ ...finding })))
+  findings.splice(0, findings.length, ...[...auditFindings, ...supplementalBriefFindings].map(finding => ({ ...finding })))
   strategyState.splice(0, strategyState.length, ...strategies.map(strategy => ({ ...strategy, methods: [...strategy.methods] })))
+  for (const strategy of strategyState) strategy.coverageGapRefs = strategyCoverageGapRefs(strategy, personas)
   tasks.splice(0, tasks.length, ...[...prototypeTasks, ...initialTasks].map(cloneGeoTask))
+  for (const task of tasks) {
+    const linkedStrategies = strategyState.filter(strategy => strategy.id === task.strategy || task.relatedStrategies.includes(strategy.id))
+    task.coverageGapRefs = [...new Set(linkedStrategies.flatMap(strategy => strategy.coverageGapRefs ?? []))]
+  }
   seedPrototypeTaskKnowledge()
   Object.keys(reviewNotes).forEach(key => delete reviewNotes[key])
   reviewNotes.GS1 = [{ role: 'agent', name: 'Agent', time: '刚刚', text: '已依据监测、诊断、人设与 GEO 规则生成候选策略。' }]
-  findings.filter(finding => ['F7-1', 'F7-2'].includes(finding.id)).forEach(finding => finding.status = '待官网运营审核')
+  findings.filter(finding => ['F7-1', 'F7-2'].includes(finding.id)).forEach(finding => finding.status = '待处理')
   strategyState.find(strategy => strategy.id === 'GS10')!.confirmed = true
 }
 function seedPrototypeTaskKnowledge() {
@@ -221,7 +226,7 @@ function persist(mode: ServiceMode = loadedMode) {
 }
 function resetClientContentReview() {
   for (const example of clientContentReviewFindings) {
-    if (!findings.some(item => item.id === example.id)) findings.push({ ...example })
+    if (!findings.some(item => item.id === example.id)) findings.push({ ...example, treatment: 'website-content-review' })
   }
   findings.splice(0, findings.length, ...normalizeClientFindings(findings))
   for (const finding of findings) {
@@ -255,11 +260,24 @@ function restore(mode: ServiceMode) {
     for (const example of supplementalBriefFindings) {
       if (!restoredFindings.some(finding => finding.id === example.id)) restoredFindings.push({ ...example })
     }
+    const canonicalFindings = [...auditFindings, ...supplementalBriefFindings, ...clientContentReviewFindings]
+    for (const finding of restoredFindings) {
+      const canonical = canonicalFindings.find(item => item.id === finding.id)
+      if (!canonical) continue
+      finding.treatment = canonical.treatment
+      if (finding.id === 'F9') Object.assign(finding, { route: canonical.route, category: canonical.category, method: canonical.method, routeReason: canonical.routeReason })
+    }
     for (const finding of restoredFindings.filter(isAdviceFinding)) {
       finding.status = '无需处理'
       finding.checked = false
     }
     for (const finding of restoredFindings.filter(isKnowledgeFinding)) { finding.status = '待补充知识'; finding.checked = false }
+    if (mode === 'managed') {
+      for (const finding of restoredFindings.filter(finding => finding.status === '待客户审核')) {
+        finding.status = '待处理'
+        finding.checked = false
+      }
+    }
     findings.splice(0, findings.length, ...restoredFindings)
     if (mode === 'agent') {
       for (const example of clientContentReviewFindings) {
@@ -268,13 +286,18 @@ function restore(mode: ServiceMode) {
     }
     const restoredStrategies = data.strategies
       .filter(item => ['内容', '实体与信任', '外部信源'].includes(String(item.layer)) || item.id === 'GS5')
-      .map(item => ({ ...item, layer: (String(item.layer) === '实体与信任' ? '内容' : item.layer) as Strategy['layer'] }))
+      .map(item => ({ ...item, layer: (String(item.layer) === '实体与信任' ? '内容' : item.layer) as Strategy['layer'], reviewStage: mode === 'managed' ? undefined : item.reviewStage }))
     for (const item of restoredStrategies) {
       if (!['GS5', 'GS1'].includes(item.id)) continue
       const current = strategies.find(strategy => strategy.id === item.id)!
       Object.assign(item, { title: current.title, description: current.description, layer: current.layer, methods: [...current.methods] })
     }
     strategyState.splice(0, strategyState.length, ...restoredStrategies)
+    for (const strategy of strategyState) {
+      strategy.origin = strategy.id === 'GS14' ? 'geo-audit' : 'buyer-coverage'
+      if (strategy.id === 'GS14') strategy.source = 'F8-2'
+      strategy.coverageGapRefs = strategyCoverageGapRefs(strategy, personas)
+    }
     const restoredTasks = [
       ...prototypeTasks.filter(prototypeTask => mode !== 'agent' && !data.tasks!.some(task => task.id === prototypeTask.id)).map(cloneGeoTask),
       ...data.tasks.map(cloneGeoTask),
@@ -300,6 +323,20 @@ function restore(mode: ServiceMode) {
     if (preservedRepair && !restoredTasks.some(task => task.id === 'T-2403'))
       preservedRepair.id = 'T-2403'
     tasks.splice(0, tasks.length, ...restoredTasks)
+    const officialFindingIds = new Set(canonicalFindings.map(finding => finding.id))
+    for (const task of tasks) {
+      if (task.id === 'T-2501' && task.strategy === 'GS14') {
+        task.type = 'web'; task.source = 'F8-2'; task.origin = 'geo-audit'; task.destination = '官网内容'; task.factor = '品牌实体'; task.methods = ['核验专家身份', '补充作者档案', '关联对应文章']; task.name = '工程师专家档案实体统一与同名消歧'; task.progress = 'brief'; delete task.workflow
+      }
+      else if (task.sourceKind === 'geo-audit-content' || task.type === 'repair' || task.source.split(/[\s/·]+/).some(id => officialFindingIds.has(id))) task.origin = 'geo-audit'
+      else if (task.strategy || task.relatedStrategies.length) task.origin = 'buyer-coverage'
+      else task.origin ??= 'standalone'
+      const linkedStrategies = strategyState.filter(strategy => strategy.id === task.strategy || task.relatedStrategies.includes(strategy.id))
+      if (task.origin === 'buyer-coverage') task.coverageGapRefs = [...new Set(linkedStrategies.flatMap(strategy => strategy.coverageGapRefs ?? []))]
+      if (task.source === 'F9' && task.type === 'repair') {
+        task.type = 'web'; task.origin = 'geo-audit'; task.destination = '官网内容'; task.name = '官网地址内容核对'; task.progress = 'brief'; delete task.workflow
+      }
+    }
     for (const task of tasks.filter(item => item.strategy === 'GS5')) {
       const strategy = strategies.find(item => item.id === 'GS5')!
       task.name = strategy.title
@@ -358,6 +395,30 @@ function restore(mode: ServiceMode) {
 // Seed data reflects the final prototype's repair and strategy workflow.
 resetSnapshot()
 restore(serviceMode.value)
+function seedTaskStatusExamples() {
+  if (serviceMode.value !== 'managed') return
+  for (const example of taskStatusExamples) {
+    if (tasks.some(task => task.id === example.id)) continue
+    const task = cloneGeoTask(example)
+    const flow = ensureWorkflow(task)
+    if (['T-2601', 'T-2607'].includes(task.id)) {
+      flow.briefStatus = 'changes_requested'
+      flow.feedback = '请补充可核验的适用范围和原始资料。'
+    }
+    if (['T-2606', 'T-2611'].includes(task.id)) {
+      flow.ignoredTask = { stage: 'brief', stageLabel: 'Task Brief 确认', reason: '资料尚未核实', explanation: '演示：暂不进入内容执行。', actor: '专家', time: new Date().toISOString() }
+    }
+    if (task.progress === 'site_failed') {
+      flow.site.result = '演示：官网验证未通过，认证适用范围与原始资料不一致。'
+      flow.site.simulateFailure = true
+    }
+    if (task.progress === 'done') {
+      flow.site.result = '演示：内容已交付并完成结果确认。'
+    }
+    tasks.push(task)
+  }
+}
+seedTaskStatusExamples()
 // Keep a few prototype examples in flight so both status designs remain inspectable.
 const pendingRepairExampleTaskIds = new Set<string>()
 function seedPendingRepairExamples() {
@@ -369,7 +430,7 @@ function seedPendingRepairExamples() {
     const flow = ensureWorkflow(task)
     flow.site.result = ''
     flow.site.preview = ''
-    finding.status = '待官网运营审核'
+    finding.status = '待专家审核'
   }
 }
 seedPendingRepairExamples()
@@ -388,7 +449,7 @@ function syncDirectRepairs() {
     flow.ignoredTask = undefined
     flow.ignoredBrief = undefined
     finding.checked = false
-    finding.status = task.progress === 'done' ? '已修复' : '待官网运营审核'
+    finding.status = task.progress === 'done' ? '已修复' : '待处理'
   }
 }
 syncDirectRepairs()
@@ -405,6 +466,7 @@ watch(serviceMode, (mode) => {
   if (mode === 'agent')
     role.value = 'client'
   restore(mode)
+  seedTaskStatusExamples()
   seedPendingRepairExamples()
   syncDirectRepairs()
   notify(mode === 'managed' ? '已切换到 AI + 专家 + 客户版' : '已切换到 AI + 客户版')
@@ -415,7 +477,7 @@ function toggleFinding(id: string) {
     return
   }
   const finding = findings.find(item => item.id === id)
-  if (finding && !isReadOnlyFinding(finding) && finding.status === '待处理')
+  if (finding && canApproveFinding(finding))
     finding.checked = !finding.checked
 }
 function selectAllFindings(ids: string[]) {
@@ -423,7 +485,7 @@ function selectAllFindings(ids: string[]) {
     notify('当前为客户角色，诊断问题由专家审核')
     return
   }
-  const selected = findings.filter(finding => ids.includes(finding.id) && !isReadOnlyFinding(finding) && finding.status === '待处理')
+  const selected = findings.filter(finding => ids.includes(finding.id) && canApproveFinding(finding))
   const checked = !selected.every(finding => finding.checked)
   selected.forEach(finding => finding.checked = checked)
 }
@@ -432,13 +494,13 @@ function approveSelectedFindings() {
     notify('当前为客户角色，诊断问题由专家审核')
     return
   }
-  const selected = findings.filter(finding => !isReadOnlyFinding(finding) && finding.checked && finding.status === '待处理')
+  const selected = findings.filter(finding => finding.checked && canApproveFinding(finding))
   if (!selected.length) {
     notify('请选择至少一条可审核的问题')
     return
   }
   selected.forEach(finding => processFinding(finding, false))
-  notify('专家已审核，等待客户审核')
+  notify(`专家已审核 ${selected.length} 项，处理结果已更新`)
 }
 function confirmStrategy(strategy: Strategy) {
   const linked = tasks.find(task => task.strategy === strategy.id || task.relatedStrategies.includes(strategy.id))
@@ -451,16 +513,8 @@ function confirmStrategy(strategy: Strategy) {
     notify('该策略已忽略，可在详情中查看审核记录')
     return
   }
-  if (serviceMode.value === 'managed' && strategy.reviewStage !== 'customer' && role.value === 'ops') {
-    strategy.reviewStage = 'customer'
-    reviewNotes[strategy.id] ??= []
-    reviewNotes[strategy.id].push({ role: 'ops', name: '专家', time: '刚刚', text: '专家审核通过，等待客户审核。' })
-    notify('专家已审核，等待客户审核')
-    drawer.type = null
-    return
-  }
-  if (serviceMode.value === 'managed' && (strategy.reviewStage !== 'customer' || role.value !== 'client')) {
-    notify('请按专家、客户的顺序完成审核')
+  if (serviceMode.value === 'managed' && role.value !== 'ops') {
+    notify('候选策略由专家审核')
     return
   }
   if (serviceMode.value === 'agent' && !canReview.value) {
@@ -487,6 +541,7 @@ function confirmStrategy(strategy: Strategy) {
       return
     }
   }
+  if (strategy.origin === 'buyer-coverage') strategy.coverageGapRefs = strategyCoverageGapRefs(strategy, personas)
   const task = serviceMode.value === 'agent' && (!strategyGapEvidence(strategy, personas) || clientStrategyPlan(strategy).kind === 'verify') ? createVerificationTask(tasks, strategy) : orchestrateStrategy(tasks, strategy)
   if (serviceMode.value === 'managed') strategy.reviewStage = undefined
   reviewNotes[strategy.id] ??= []
@@ -548,6 +603,8 @@ function openAudit(finding: AuditFinding) {
 }
 function taskForFinding(finding: AuditFinding) {
   if (isReadOnlyFinding(finding)) return undefined
+  if (findingTreatment(finding) === 'website-content-review' && finding.category === '官网内容' && finding.id.startsWith('F'))
+    return tasks.find(task => task.origin === 'geo-audit' && task.type === 'web' && task.source.split(/[\s/·]+/).includes(finding.id))
   if (finding.category === '官网内容' && finding.route === 'strategy')
     return tasks.find(task => task.sourceKind === 'geo-audit-content' && task.source === finding.id)
   const directTask = tasks.find(task => task.source.split(/[\s/·]+/).includes(finding.id))
@@ -558,6 +615,7 @@ function taskForFinding(finding: AuditFinding) {
 }
 function strategyForFinding(finding: AuditFinding) {
   if (isReadOnlyFinding(finding)) return undefined
+  if (findingTreatment(finding) === 'website-content-review' && finding.category === '官网内容' && finding.id.startsWith('F')) return undefined
   const mappedId = /专家|作者/.test(finding.title) ? 'GS14' : undefined
   return strategyState.find(strategy => strategy.source.split(' / ').includes(finding.id) || (mappedId && strategy.id === mappedId))
 }
@@ -566,9 +624,9 @@ function canApproveFinding(finding: AuditFinding) {
   if (isReadOnlyFinding(finding) || isDirectRepairFinding(finding))
     return false
   if (serviceMode.value === 'managed')
-    return finding.status === '待客户审核' ? role.value === 'client' : role.value === 'ops' && finding.status === '待处理'
+    return role.value === 'ops' && ['待处理', '待官网运营审核', '待专家审核', '已生成策略'].includes(finding.status)
   if (!canReview.value) return false
-  if (finding.status === '待处理')
+  if (['待处理', '待官网运营审核', '待专家审核', '已生成策略'].includes(finding.status))
     return true
   const strategy = finding.route === 'strategy' ? strategyForFinding(finding) : undefined
   return Boolean(strategy && !strategy.confirmed && !strategy.ignored && finding.status !== '暂不修复' && finding.status !== '已修复')
@@ -624,14 +682,9 @@ function changeReviewPriority(value: Priority) {
 function processFinding(finding: AuditFinding, showNotification = true) {
   finding = findings.find(item => item.id === finding.id) ?? finding
   if (isReadOnlyFinding(finding) || !canApproveFinding(finding)) return
-  if (serviceMode.value === 'managed' && role.value === 'ops') {
-    finding.status = '待客户审核'
-    finding.checked = false
+  if (serviceMode.value === 'managed') {
     reviewNotes[finding.id] ??= []
-    reviewNotes[finding.id].push({ role: 'ops', name: '专家', time: '刚刚', text: '专家审核通过，等待客户审核。' })
-    if (showNotification) notify('专家已审核，等待客户审核')
-    drawer.type = null
-    return
+    reviewNotes[finding.id].push({ role: 'ops', name: '专家', time: '刚刚', text: '专家审核通过，已进入处理流程。' })
   }
   if (finding.route === 'strategy') {
     if (!canApproveFinding(finding))
@@ -647,12 +700,12 @@ function processFinding(finding: AuditFinding, showNotification = true) {
     finding.status = '已生成策略'
     finding.checked = false
     reviewNotes[task.id] ??= []
-    reviewNotes[task.id].push({ role: 'client', name: '客户', time: '刚刚', text: '官网内容问题审核通过，已生成独立任务，等待确认 Brief。' })
+    reviewNotes[task.id].push({ role: 'ops', name: '专家', time: '刚刚', text: '官网内容问题审核通过，已生成独立任务，等待确认 Brief。' })
     if (showNotification)
       notify('官网内容问题已审核，任务已进入优化中心，等待专家确认 Brief。', task)
   }
   else {
-    if (finding.status !== '待处理' && !(serviceMode.value === 'managed' && role.value === 'client' && finding.status === '待客户审核'))
+    if (finding.status !== '待处理')
       return
     const task = createRepairTask(tasks, finding)
     finding.status = '已生成策略'
@@ -664,7 +717,7 @@ function processFinding(finding: AuditFinding, showNotification = true) {
       finding.checked = false
     }
     if (showNotification)
-      notify(serviceMode.value === 'agent' ? '问题已确认，已生成任务。下一步请确认任务 Brief。' : '客户审核通过，已生成关联任务', serviceMode.value === 'agent' ? task : undefined)
+      notify(serviceMode.value === 'agent' ? '问题已确认，已生成任务。下一步请确认任务 Brief。' : '专家审核通过，已生成关联任务', serviceMode.value === 'agent' ? task : undefined)
   }
   drawer.type = null
 }
@@ -773,7 +826,7 @@ function strategyStatusLabel(strategy: Strategy) {
 }
 function canReviewStrategy(strategy: Strategy) {
   if (strategy.confirmed || strategy.ignored || strategy.businessGapRecorded || tasks.some(task => task.strategy === strategy.id || task.relatedStrategies.includes(strategy.id))) return false
-  return serviceMode.value === 'agent' ? role.value === 'client' : strategy.reviewStage === 'customer' ? role.value === 'client' : role.value === 'ops'
+  return serviceMode.value === 'agent' ? role.value === 'client' : role.value === 'ops'
 }
 function strategyTypeLabel(strategy: Strategy) {
   const labels: Partial<Record<Strategy['layer'], string>> = {
@@ -798,22 +851,7 @@ function findingCheckLabel(finding: AuditFinding) {
   return `${circledNumbers[checkIndex] ?? ''} ${finding.check}`.trim()
 }
 function findingStatusLabel(finding: AuditFinding) {
-  if (findingHasTask(finding, strategyState, tasks, serviceMode.value === 'agent' || finding.id === 'F9')) return '已生成任务'
-  if (isKnowledgeFinding(finding)) return '待补充知识'
-  if (isAdviceFinding(finding)) return '无需处理'
-  if (serviceMode.value === 'managed' && finding.status === '待客户审核') return '待客户审核'
-  if (isDirectRepairFinding(finding))
-    return directRepairStatus(finding.status === '已修复')
-  const strategy = finding.route === 'strategy' ? strategyForFinding(finding) : undefined
-  if (strategy && !strategy.confirmed && !strategy.ignored)
-    return pendingReviewLabel(serviceMode.value)
-  if (finding.status === '暂不修复')
-    return '本轮已终止'
-  if (finding.status === '已修复')
-    return '已修复'
-  if (finding.route === 'strategy' && finding.status === '已生成策略')
-    return '已生成任务'
-  return ['待处理', '待官网运营审核'].includes(finding.status) ? pendingReviewLabel(serviceMode.value) : finding.status
+  return resolveFindingStatusLabel(finding, strategyState, tasks, serviceMode.value === 'agent')
 }
 provide(geoWorkbenchRouteContextKey, {
   findings,
@@ -999,7 +1037,7 @@ provide(geoWorkbenchRouteContextKey, {
               <dt v-if="taskForFinding(drawer.item as AuditFinding)">关联任务</dt><dd v-if="taskForFinding(drawer.item as AuditFinding)">{{ taskForFinding(drawer.item as AuditFinding)?.id }} · {{ taskForFinding(drawer.item as AuditFinding)?.progress === 'brief' ? 'Brief 待确认' : taskForFinding(drawer.item as AuditFinding)?.progress === 'done' ? '已完成' : '执行中' }}</dd>
             </template>
             <dt>所属检查项</dt><dd>{{ findingCheckLabel(drawer.item as AuditFinding) }}</dd>
-            <dt>当前状态</dt><dd><span class="geo-finding-status" :class="{ 'is-advice': isAdviceFinding(drawer.item as AuditFinding), 'is-done': findingStatusLabel(drawer.item as AuditFinding) === '已修复', 'is-deferred': findingStatusLabel(drawer.item as AuditFinding) === '暂不修复' }">{{ findingStatusLabel(drawer.item as AuditFinding) }}</span></dd>
+            <dt>当前状态</dt><dd><span class="geo-finding-status" :class="{ 'is-advice': isAdviceFinding(drawer.item as AuditFinding), 'is-done': ['已生成任务', '已完成处理', 'AI建站处理中'].includes(findingStatusLabel(drawer.item as AuditFinding)), 'is-deferred': findingStatusLabel(drawer.item as AuditFinding) === '暂不修复' }">{{ findingStatusLabel(drawer.item as AuditFinding) }}</span></dd>
             <dt v-if="(drawer.item as AuditFinding).decisionReason">
               {{ serviceMode === 'agent' ? '终止原因' : '暂缓原因' }}
             </dt><dd v-if="(drawer.item as AuditFinding).decisionReason">
@@ -1138,7 +1176,7 @@ provide(geoWorkbenchRouteContextKey, {
         </template><Button v-if="drawer.type === 'audit-finding' && canIgnoreFinding(drawer.item as AuditFinding) && !deferMode" @click="ignoreFinding(drawer.item as AuditFinding)">
           忽略
         </Button><Button v-if="drawer.type === 'audit-finding' && canApproveFinding(drawer.item as AuditFinding) && !deferMode" variant="primary" color="var(--geo-brand)" color-text="var(--primitive-white)" @click="processFinding(drawer.item as AuditFinding)">
-          {{ serviceMode === 'managed' && role === 'ops' ? '审核通过，交客户审核' : '审核通过并生成任务' }}
+          {{ serviceMode === 'agent' ? '确认处理并生成任务' : '审核通过并生成任务' }}
         </Button><Button v-if="drawer.type === 'audit-finding' && !canApproveFinding(drawer.item as AuditFinding) && (drawer.item as AuditFinding).status !== '待处理' && (taskForFinding(drawer.item as AuditFinding) || strategyForFinding(drawer.item as AuditFinding))" variant="primary" color="var(--geo-brand)" color-text="var(--primitive-white)" @click="openFindingDestination(drawer.item as AuditFinding)">
           {{ serviceMode === 'agent' && taskForFinding(drawer.item as AuditFinding)?.progress === 'brief' ? '去确认 Brief' : taskForFinding(drawer.item as AuditFinding) ? '进入任务' : '进入策略' }}
         </Button><template v-if="drawer.type === 'strategy' && canReviewStrategy(drawer.item as Strategy)">
@@ -1149,7 +1187,7 @@ provide(geoWorkbenchRouteContextKey, {
           </Button><Button v-if="strategyIgnoreMode" variant="primary" color="var(--geo-brand)" color-text="var(--primitive-white)" @click="ignoreStrategy(drawer.item as Strategy)">
             {{ serviceMode === 'agent' ? '确认不处理' : '确认忽略' }}
           </Button><Button v-else variant="primary" color="var(--geo-brand)" color-text="var(--primitive-white)" @click="confirmStrategy(drawer.item as Strategy)">
-            {{ serviceMode === 'managed' && role === 'ops' ? '审核通过，交客户审核' : '审核通过并生成任务' }}
+            {{ serviceMode === 'agent' ? '确认策略并生成任务' : '审核通过并生成任务' }}
           </Button>
         </template><Button v-if="drawer.type === 'strategy' && ((drawer.item as Strategy).confirmed || (serviceMode === 'agent' && tasks.some(task => task.strategy === (drawer.item as Strategy).id || task.relatedStrategies.includes((drawer.item as Strategy).id))))" variant="primary" color="var(--geo-brand)" color-text="var(--primitive-white)" @click="confirmStrategy(drawer.item as Strategy)">
           {{ serviceMode === 'agent' && tasks.some(task => (task.strategy === (drawer.item as Strategy).id || task.relatedStrategies.includes((drawer.item as Strategy).id)) && task.progress === 'brief') ? '去确认 Brief' : '查看关联任务' }}
